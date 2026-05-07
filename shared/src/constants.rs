@@ -1,0 +1,11 @@
+pub const SESSION_ID_LEN: usize = 32;
+pub const SALT_LEN: usize = 16;
+pub const HEARTBEAT_MIN_INTERVAL_MS: u64 = 12_000;
+pub const HEARTBEAT_MAX_INTERVAL_MS: u64 = 25_000;
+pub const EXPIRATION_MINUTES: i64 = 30;
+pub const RATE_LIMIT_COUNT: u32 = 5;
+pub const RATE_LIMIT_WINDOW_SECS: u64 = 10;
+pub const MAX_TIMESTAMP_DRIFT_MS: i64 = 30_000;
+pub const MIN_MOUSE_TOTAL_DIST: f64 = 10.0;
+pub const MAX_MOUSE_AVG_SPEED: f64 = 2.0; // px/ms
+pub const MIN_PAUSE_COUNT: u32 = 1;

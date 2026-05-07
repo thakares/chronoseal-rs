@@ -1,0 +1,1 @@
+// Fingerprint collection is done in JS, this module is a placeholder.

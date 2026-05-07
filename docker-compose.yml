@@ -1,0 +1,16 @@
+version: "3.9"
+
+services:
+  chronoseal:
+    build: .
+    container_name: chronoseal
+    restart: unless-stopped
+
+    ports:
+      - "3000:3000"
+
+    environment:
+      RUST_LOG: info
+
+    tmpfs:
+      - /tmp
