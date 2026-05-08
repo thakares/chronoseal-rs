@@ -1,5 +1,5 @@
 [package]
-name = "antibot-server"
+name = "chronoseal-server"
 version = "0.2.0"
 edition = "2021"
 
