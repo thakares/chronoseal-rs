@@ -30,12 +30,12 @@ is invalidated. ChronoSeal applies this model to browser sessions.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Browser                                                     │
+│  Browser                                                    │
 │                                                             │
 │  ┌──────────────┐    ┌───────────────────────────────────┐  │
 │  │  JavaScript  │    │  WASM Module (antibot_wasm)       │  │
 │  │              │    │                                   │  │
-│  │  heartbeat   │◄──►│  crypto.rs   — Ed25519 keypair   │  │
+│  │  heartbeat   │◄──►│  crypto.rs   — Ed25519 keypair    │  │
 │  │  entropy     │    │  vm.rs       — stack machine      │  │
 │  │  transport   │    │  (private key never leaves here)  │  │
 │  └──────────────┘    └───────────────────────────────────┘  │
@@ -45,14 +45,14 @@ is invalidated. ChronoSeal applies this model to browser sessions.
 ┌─────────────────────────────────────────────────────────────┐
 │  Server (Axum / Tokio)                                      │
 │                                                             │
-│  POST /init ──► session.rs ──► storage.rs (SQLite)         │
+│  POST /init ──► session.rs ──► storage.rs (SQLite)          │
 │  POST /hb   ──► session.rs                                  │
 │                   ├── crypto.rs     (Ed25519 verify)        │
 │                   ├── trust.rs      (mouse entropy)         │
 │                   ├── fingerprint   (browser signals)       │
 │                   └── vm.rs         (opcode generation)     │
 │                                                             │
-│  Background: cleanup.rs (session expiry + RL eviction)     │
+│  Background: cleanup.rs (session expiry + RL eviction)      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -108,14 +108,14 @@ Client                                    Server
   │  WASM: generate Ed25519 keypair          │
   │  private key → thread_local storage      │
   │                                          │
-  ├─── { public_key: hex } ────────────────►│
+  ├─── { public_key: hex } ─────────────────►│
   │                                          │  Generate session_id (32 bytes CSPRNG)
   │                                          │  Generate salt₀ (16 bytes CSPRNG)
   │                                          │  H₀ = Blake3(session_id ║ pub_key ║ salt₀)
   │                                          │  Generate random VM program (8–16 opcodes)
   │                                          │  Store: session_id, pub_key, salt₀, H₀
   │                                          │
-  │◄── { session_id, salt, opcodes, H₀ } ───┤
+  │◄── { session_id, salt, opcodes, H₀ } ────┤
   │                                          │
   │  Store: session_id, prevHash=H₀,         │
   │         currentSalt=salt₀, opcodes       │
@@ -133,7 +133,7 @@ Client                                    Server
   │    sessionId, stackState, timestamp      │
   │  Sign with Ed25519 private key           │
   │                                          │
-  ├─── { session_id, prev_hash, timestamp,  │
+  ├─── { session_id, prev_hash, timestamp,   │
   │       entropy_data, stack_state,         │
   │       fingerprint, signature } ─────────►│
   │                                          │  Rate limit check
@@ -152,7 +152,7 @@ Client                                    Server
   │                                          │
   │  sentSalt = currentSalt                  │
   │  currentSalt = next_salt                 │
-  │  prevHash = Blake3(sentSalt ║ H(n-1) ║ …│  ← must mirror server computation
+  │  prevHash = Blake3(sentSalt ║ H(n-1) ║ … │  ← must mirror server computation
 ```
 
 ### 3. Session Expiry
