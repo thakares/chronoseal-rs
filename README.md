@@ -22,13 +22,13 @@ Browser                                    Server
   │  Every 12–25s (jittered):                 │
   │  ┌─ Collect mouse entropy                 │
   │  ├─ Execute VM opcodes → stack state      │
-  │  ├─ Compute H(n) = Blake3(H(n-1) ║ …)   │
+  │  ├─ Compute H(n) = Blake3(H(n-1) ║ …)     │
   │  └─ Sign payload with Ed25519             │
   │                                           │
   ├──── POST /hb  { session_id, sig, … } ────►│  Verify sig → chain → behavior → fingerprint
   │◄─── { status, next_salt } ────────────────┤  Rotate salt, advance chain
   │                                           │
-  │  On failure: server returns {"status":"ok"}│  Silent rejection — indistinguishable
+  │ On failure: server returns {"status":"ok"}│  Silent rejection — indistinguishable
 ```
 
 ---
@@ -233,4 +233,4 @@ All tunable constants are in `shared/src/constants.rs`:
 
 ## License
 
-[GPL-3.0](LICENSE.md)
+[MIT/Apache 2.0](LICENSE.md)
