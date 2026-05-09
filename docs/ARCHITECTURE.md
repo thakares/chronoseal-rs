@@ -47,22 +47,22 @@ synchronisation burden alone makes scaled operation expensive.
 ┌─────────────────────────────────────────────────────────┐
 │  Browser                                                │
 │                                                         │
-│  ┌─────────────┐   ┌──────────────┐   ┌─────────────┐  │
-│  │  entropy.js │   │ heartbeat.js │   │ transport.js│  │
-│  │             │   │              │   │             │  │
-│  │ mousemove   │──►│ orchestrates │──►│ fetch POST  │  │
-│  │ event ring  │   │ init + HB    │   │ /init  /hb  │  │
-│  └─────────────┘   └──────┬───────┘   └─────────────┘  │
+│  ┌─────────────┐   ┌──────────────┐   ┌─────────────┐   │
+│  │  entropy.js │   │ heartbeat.js │   │ transport.js│   │
+│  │             │   │              │   │             │   │
+│  │ mousemove   │──►│ orchestrates │──►│ fetch POST  │   │
+│  │ event ring  │   │ init + HB    │   │ /init  /hb  │   │
+│  └─────────────┘   └──────┬───────┘   └─────────────┘   │
 │                           │                             │
 │                    ┌──────▼───────────────────────┐     │
-│                    │  WASM Module (antibot_wasm)   │     │
-│                    │                               │     │
-│                    │  crypto.rs      vm.rs         │     │
-│                    │  ├ generate_keypair()          │     │
-│                    │  ├ sign_message()              │     │
-│                    │  ├ compute_next_hash()         │     │
-│                    │  └ run_program()               │     │
-│                    └───────────────────────────────┘     │
+│                    │  WASM Module (antibot_wasm)  │     │
+│                    │                              │     │
+│                    │  crypto.rs      vm.rs        │     │
+│                    │  ├ generate_keypair()        │     │
+│                    │  ├ sign_message()            │     │
+│                    │  ├ compute_next_hash()       │     │
+│                    │  └ run_program()             │     │
+│                    └──────────────────────────────┘     │
 └─────────────────────────────────────────────────────────┘
                           │ HTTPS
 ┌─────────────────────────▼───────────────────────────────┐
@@ -71,7 +71,7 @@ synchronisation burden alone makes scaled operation expensive.
 │  routes/init.rs          routes/heartbeat.rs            │
 │       │                          │                      │
 │       └──────────┬───────────────┘                      │
-│                  ▼                                       │
+│                  ▼                                      │
 │            session.rs                                   │
 │            ├ create_session()                           │
 │            └ verify_heartbeat()                         │
@@ -111,7 +111,7 @@ Client                                  Server
   │                                        │  opcodes = generate_random_program(8..=16)
   │                                        │  INSERT INTO sessions …
   │                                        │
-  │◄── { session_id, salt, opcodes_b64,   │
+  │◄── { session_id, salt, opcodes_b64,    │
   │      initial_hash, expires_at } ───────┤
   │                                        │
   │  prevHash    = initial_hash            │
@@ -138,7 +138,7 @@ Client                                  Server
   │  sig = sign_message(                   │
   │    JSON.stringify(signable, keys.sort))│
   │                                        │
-  ├─── { session_id, prev_hash, timestamp,│
+  ├─── { session_id, prev_hash, timestamp, │
   │      entropy_data, stack_state,        │
   │      fingerprint, signature } ────────►│
   │                                        │  1. Rate limit check
