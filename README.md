@@ -233,4 +233,4 @@ All tunable constants are in `shared/src/constants.rs`:
 
 ## License
 
-[MIT/Apache 2.0](LICENSE.md)
+[MIT OR Apache-2.0](LICENSE)
