@@ -1,5 +1,9 @@
 # ChronoSeal
+<p align="center">
+  <img src="logo/chronoseal.svg" width="220" alt="ChronoSeal Logo">
+</p>
 
+<h1 align="center">ChronoSeal</h1>
 **Cryptographic anti-automation and browser attestation framework built with Rust, WASM, and behavioral continuity verification.**
 
 ChronoSeal makes it computationally expensive and operationally complex for AI scrapers, headless browsers, and automation tools to impersonate real users — while remaining completely invisible and frictionless to legitimate human visitors.
