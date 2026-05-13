@@ -1,10 +1,16 @@
 #!/bin/bash
-set -e
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 echo "Building WASM..."
-cd ../wasm
-wasm-pack build --target web
-mv pkg ../frontend/pkg
+cd "$ROOT/wasm"
+wasm-pack build --target web --release
+rm -rf "$ROOT/frontend/pkg"
+mv pkg "$ROOT/frontend/pkg"
+
 echo "Building server..."
-cd ../server
-cargo build --release
+cd "$ROOT"
+cargo build -p chronoseal-server --bin chronoseal --release
+
 echo "Done."

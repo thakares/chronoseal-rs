@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY . .
 
-RUN cargo build -p server --release
+RUN cargo build -p chronoseal-server --bin chronoseal --release
 
 FROM debian:bookworm-slim
 
@@ -14,10 +14,14 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /opt/chronoseal
 
-COPY --from=builder /app/target/release/server /usr/local/bin/chronoseal
+COPY --from=builder /app/target/release/chronoseal /usr/local/bin/chronoseal
+COPY frontend /usr/share/chronoseal/frontend
 
 EXPOSE 3000
 
 ENV RUST_LOG=info
+ENV CHRONOSEAL_DB_PATH=/var/lib/chronoseal/chronoseal.sqlite
+ENV CHRONOSEAL_FRONTEND_DIR=/usr/share/chronoseal/frontend
+ENV CHRONOSEAL_PID_FILE=/run/chronoseal.pid
 
-CMD ["chronoseal"]
+CMD ["chronoseal", "run"]

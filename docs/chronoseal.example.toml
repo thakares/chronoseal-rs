@@ -1,0 +1,5 @@
+bind = "0.0.0.0:3000"
+pid_file = "/run/chronoseal.pid"
+db_path = "/var/lib/chronoseal/chronoseal.sqlite"
+frontend_dir = "/usr/share/chronoseal/frontend"
+log_file = "/var/log/chronoseal/chronoseal.jsonl"

@@ -1,6 +1,8 @@
 [Unit]
-Description=ChronoSeal Anti-Bot Service
-After=network.target
+Description=ChronoSeal cryptographic browser attestation service
+Documentation=https://chronoseal.rs
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -8,28 +10,58 @@ Type=simple
 User=chronoseal
 Group=chronoseal
 
-WorkingDirectory=/opt/chronoseal
+Environment=RUST_LOG=info
+Environment=CHRONOSEAL_CONFIG=/etc/chronoseal/config.toml
+Environment=CHRONOSEAL_STATE_DIR=/var/lib/chronoseal
+Environment=CHRONOSEAL_PID_FILE=/run/chronoseal.pid
 
-ExecStart=/usr/local/bin/chronoseal
+ExecStart=/usr/local/bin/chronoseal run
+ExecStartPre=+/usr/bin/touch /run/chronoseal.pid
+ExecStartPre=+/usr/bin/chown chronoseal:chronoseal /run/chronoseal.pid
+ExecReload=/bin/kill -HUP $MAINPID
+ExecStopPost=+/usr/bin/rm -f /run/chronoseal.pid
+PIDFile=/run/chronoseal.pid
 
-Restart=always
+Restart=on-failure
 RestartSec=3
+TimeoutStopSec=30
+KillSignal=SIGTERM
+
+RuntimeDirectory=chronoseal
+RuntimeDirectoryMode=0750
+StateDirectory=chronoseal
+StateDirectoryMode=0750
+LogsDirectory=chronoseal
+LogsDirectoryMode=0750
+ConfigurationDirectory=chronoseal
+ConfigurationDirectoryMode=0750
 
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
+ProtectHome=read-only
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+ProtectProc=invisible
+ProcSubset=pid
+PrivateDevices=true
+PrivateIPC=true
 
 MemoryDenyWriteExecute=true
 RestrictRealtime=true
 RestrictSUIDSGID=true
+RemoveIPC=true
 
 LockPersonality=true
 
 SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+CapabilityBoundingSet=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 [Install]
 WantedBy=multi-user.target

@@ -3,15 +3,24 @@ name = "chronoseal-server"
 version = "0.2.0"
 edition = "2021"
 
+[[bin]]
+name = "chronoseal"
+path = "src/main.rs"
+
 [dependencies]
 shared = { path = "../shared" }
 axum = "0.7"
+clap = { version = "4", features = ["derive", "env", "wrap_help"] }
+clap_complete = "4"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
+toml = "0.8"
 rusqlite = { version = "0.31", features = ["bundled"] }
 tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing-appender = "0.2"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tower = "0.4"
 tower-http = { version = "0.5", features = ["cors", "fs"] }
 hex = "0.4"
