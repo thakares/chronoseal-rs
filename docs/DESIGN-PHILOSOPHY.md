@@ -18,10 +18,21 @@ ChronoSeal is designed so that administrators can operate, monitor, configure, a
 - **Minimal Friction, Maximum Durability**: One-line installer, world-class `--help`, proper man pages, and decades-long maintainability are non-negotiable.
 - **Respect for the OS**: Follows Linux Filesystem Hierarchy Standard (FHS), XDG Base Directory specification, and hardened systemd practices.
 
+### Non-Goals
+
+ChronoSeal is **not** designed to be:
+- Cloud-first or vendor-specific
+- Browser-first or JavaScript-heavy
+- Dependency-heavy or framework-driven
+- GUI-centric (any graphical interface must be a thin wrapper)
+- Telemetry-oriented or privacy-invasive
+- Optimized for rapid prototyping at the cost of long-term reliability
+
+These non-goals help keep the project focused on stability, simplicity, security, and deep Unix integration.
+
 ### Development Mindset
 
 - Production robustness, security, and long-term sustainability take clear precedence over development speed.
-- Any GUI, TUI, or web dashboard must be thin wrappers around the core CLI and interfaces.
 - Every design decision is evaluated against one question:  
   **“Does this make ChronoSeal feel like it naturally belongs in `/usr/bin/`?”**
 
