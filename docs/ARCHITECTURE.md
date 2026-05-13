@@ -39,6 +39,32 @@ activity, correct WASM execution, chain state synchronisation, and a valid
 Ed25519 signature over a time-windowed payload. For an automated client, the
 synchronisation burden alone makes scaled operation expensive.
 
+### High-Level Design
+
+- **Core**: Rust + Axum (async web framework)
+- **Storage**: In-memory SQLite (fast, ephemeral per process — restarts are clean)
+- **Client**: WASM + Rust (runs in browser for proof generation)
+- **Security Model**: Behavioral analysis + hash chaining + entropy scoring
+- **Deployment**: Static musl binary, systemd service, optional Docker
+
+### Key Components
+
+- `shared/` — Types, constants, crypto primitives used by server and WASM
+- `server/` — Axum routes, session management, trust engine, rate limiting, cleanup tasks
+- `wasm/` — Client-side proof generation
+- `frontend/` — Static assets served by the application
+
+### Unix-Native Design Decisions
+
+- Runs as a proper systemd service with strict sandboxing
+- All state is either in-memory or in standard locations (`/run/`, `/var/log/`, `/etc/`)
+- Graceful shutdown and reload support via signals
+- Logging designed for `journalctl` and structured parsing
+- Configuration will be fully runtime (no recompile needed)
+
+### Design Goal
+
+ChronoSeal should feel as natural to use as `nginx` or `redis-server` on a Linux system.
 ---
 
 ## Component Map
