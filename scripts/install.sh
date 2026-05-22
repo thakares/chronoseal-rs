@@ -1,52 +1,46 @@
-#!/bin/sh
-set -eu
+#!/bin/bash
+set -euo pipefail
 
-CHRONOSEAL_VERSION="${CHRONOSEAL_VERSION:-latest}"
-CHRONOSEAL_INSTALL_DIR="${CHRONOSEAL_INSTALL_DIR:-/usr/local/bin}"
-CHRONOSEAL_BASE_URL="${CHRONOSEAL_BASE_URL:-https://get.chronoseal.rs/releases}"
+echo "🚀 ChronoSeal Installer"
+echo "======================"
 
-need() {
-    command -v "$1" >/dev/null 2>&1 || {
-        echo "chronoseal installer: missing required command: $1" >&2
-        exit 1
-    }
-}
-
-need uname
-need mktemp
-need chmod
-
-arch="$(uname -m)"
-case "$arch" in
-    x86_64|amd64) target="x86_64-unknown-linux-musl" ;;
-    aarch64|arm64) target="aarch64-unknown-linux-musl" ;;
-    *) echo "chronoseal installer: unsupported architecture: $arch" >&2; exit 1 ;;
-esac
-
-if command -v curl >/dev/null 2>&1; then
-    fetch="curl --proto =https --tlsv1.2 -fsSL"
-elif command -v wget >/dev/null 2>&1; then
-    fetch="wget -qO-"
-else
-    echo "chronoseal installer: install curl or wget" >&2
-    exit 1
+# Create system user
+if ! id -u chronoseal &>/dev/null; then
+    sudo useradd --system --no-create-home --shell /usr/sbin/nologin chronoseal
+    echo "✓ Created chronoseal system user"
 fi
 
-tmp="$(mktemp -d)"
-trap 'rm -rf "$tmp"' EXIT
+# Build
+echo "→ Building ChronoSeal..."
+cd "$(dirname "$0")/.."
+bash scripts/build.sh
 
-url="$CHRONOSEAL_BASE_URL/$CHRONOSEAL_VERSION/chronoseal-$target.tar.gz"
-echo "downloading chronoseal $CHRONOSEAL_VERSION for $target"
+# Install binary
+sudo install -Dm755 target/release/chronoseal /usr/local/bin/chronoseal
+echo "✓ Installed binary to /usr/local/bin/chronoseal"
 
-# shellcheck disable=SC2086
-$fetch "$url" | tar -xz -C "$tmp"
-chmod 0755 "$tmp/chronoseal"
+# Install frontend assets
+sudo mkdir -p /opt/chronoseal
+sudo cp -r frontend /opt/chronoseal/
+sudo chown -R chronoseal:chronoseal /opt/chronoseal
+echo "✓ Installed frontend assets"
 
-if [ "$(id -u)" -eq 0 ]; then
-    install -m 0755 "$tmp/chronoseal" "$CHRONOSEAL_INSTALL_DIR/chronoseal"
-else
-    sudo install -m 0755 "$tmp/chronoseal" "$CHRONOSEAL_INSTALL_DIR/chronoseal"
-fi
+# Install systemd service
+sudo cp chronoseal.service /etc/systemd/system/chronoseal.service
+sudo systemctl daemon-reload
+echo "✓ Installed systemd service"
 
-echo "installed: $CHRONOSEAL_INSTALL_DIR/chronoseal"
-echo "try: chronoseal --help"
+# Enable and start
+sudo systemctl enable --now chronoseal
+echo "✓ ChronoSeal service started"
+
+echo ""
+echo "✅ ChronoSeal installed successfully!"
+echo ""
+echo "Useful commands:"
+echo "  chronoseal status          # Check service status"
+echo "  chronoseal health          # Health probe"
+echo "  sudo systemctl status chronoseal"
+echo "  sudo journalctl -u chronoseal -f"
+echo ""
+echo "To uninstall: sudo systemctl disable --now chronoseal && sudo rm /usr/local/bin/chronoseal"
