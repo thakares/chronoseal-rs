@@ -1,130 +1,332 @@
 # ChronoSeal
+
 <p align="center">
   <img src="logo/chronoseal.svg" width="220" alt="ChronoSeal Logo">
 </p>
 
-**Cryptographic anti-automation and browser attestation framework built with Rust, WASM, and behavioral continuity verification.**
+<p align="center">
+  <strong>Cryptographic attestation daemon and anti-automation framework.</strong>
+</p>
 
-ChronoSeal makes it computationally expensive and operationally complex for AI scrapers, headless browsers, and automation tools to impersonate real users — while remaining completely invisible and frictionless to legitimate human visitors.
+<p align="center">
+  Privacy-preserving • Unix-native • Lightweight • WASM-powered
+</p>
 
 ---
 
-## How It Works
+ChronoSeal is a lightweight cryptographic attestation daemon designed to raise the operational cost of browser automation, scraping, replay attacks, and synthetic interaction.
 
-ChronoSeal establishes a continuous, cryptographically verifiable proof-of-presence for every browser session. It is inspired by the heartbeat model used in IoT firmware (ESP32-class devices): the client must keep emitting signed, chained attestations, or the session is silently invalidated.
+Instead of relying on:
 
+* CAPTCHA systems
+* invasive browser fingerprinting
+* telemetry-heavy tracking
+* persistent identifiers
+
+ChronoSeal establishes a continuous cryptographic proof-of-runtime continuity using:
+
+* WASM execution
+* chained cryptographic heartbeats
+* behavioral entropy validation
+* ephemeral attestation state
+
+while remaining completely invisible and frictionless to legitimate human users.
+
+---
+
+# Features
+
+* CLI-first Unix-native architecture
+* Rich operational subcommands
+* Machine-readable JSON/YAML outputs
+* Hardened systemd integration
+* Graceful shutdown and signal handling
+* One-line installation workflow
+* Prometheus-compatible metrics
+* WASM-based client runtime
+* Ed25519 + Blake3 cryptographic chaining
+* Behavioral entropy validation
+* Randomized stack-machine verification
+* Silent rejection model
+* SQLite-backed ephemeral sessions
+* Connection-pooled runtime architecture
+* Lightweight deployment footprint
+* Docker and native deployment support
+
+---
+
+# Quick Start
+
+## Install
+
+```bash
+sudo bash scripts/install.sh
 ```
+
+## Check Status
+
+```bash
+chronoseal status --format json
+```
+
+## Health Probe
+
+```bash
+chronoseal health
+```
+
+## View Metrics
+
+```bash
+chronoseal metrics
+```
+
+## View Logs
+
+```bash
+sudo journalctl -u chronoseal -f
+```
+
+---
+
+# CLI
+
+```bash
+chronoseal --help
+```
+
+## Available Commands
+
+| Command      | Description                                |
+| ------------ | ------------------------------------------ |
+| `run`        | Run the ChronoSeal daemon                  |
+| `status`     | Report daemon status                       |
+| `health`     | Perform daemon health probe                |
+| `config`     | Validate and print effective configuration |
+| `generate`   | Generate operational material              |
+| `metrics`    | Output Prometheus metrics                  |
+| `stats`      | Print runtime statistics                   |
+| `completion` | Generate shell completions                 |
+| `version`    | Print version/build information            |
+
+---
+
+## Example
+
+```bash
+chronoseal status --format json
+```
+
+```json
+{
+  "running": true,
+  "healthy": true,
+  "bind": "0.0.0.0:3000",
+  "pid_file": "/run/chronoseal.pid",
+  "pid": 79459
+}
+```
+
+---
+
+# How It Works
+
+ChronoSeal establishes a continuous cryptographic proof-of-presence for browser sessions.
+
+The system is inspired by heartbeat validation models used in embedded and distributed systems.
+
+## Session Flow
+
+```text
 Browser                                    Server
   │                                           │
   │  WASM loads, generates Ed25519 keypair    │
   │  Private key never leaves WASM memory     │
   │                                           │
-  ├──── POST /init  { public_key } ──────────►│  Store session, salt, initial hash
+  ├──── POST /init  { public_key } ──────────►│
   │◄─── { session_id, salt, opcodes, H0 } ────┤
   │                                           │
-  │  Every 12–25s (jittered):                 │
-  │  ┌─ Collect mouse entropy                 │
-  │  ├─ Execute VM opcodes → stack state      │
-  │  ├─ Compute H(n) = Blake3(H(n-1) ║ …)     │
-  │  └─ Sign payload with Ed25519             │
+  │ Every 12–25s (randomized):                │
+  │  ┌─ Collect behavioral entropy            │
+  │  ├─ Execute VM opcode program             │
+  │  ├─ Advance Blake3 hash chain             │
+  │  └─ Sign payload using Ed25519            │
   │                                           │
-  ├──── POST /hb  { session_id, sig, … } ────►│  Verify sig → chain → behavior → fingerprint
-  │◄─── { status, next_salt } ────────────────┤  Rotate salt, advance chain
+  ├──── POST /heartbeat  { signed_payload } ─►│
+  │◄─── { status, next_salt } ────────────────┤
   │                                           │
-  │ On failure: server returns {"status":"ok"}│  Silent rejection — indistinguishable
+  │ Invalid sessions silently rejected        │
 ```
+
+The server validates:
+
+* signature authenticity
+* heartbeat continuity
+* replay resistance
+* behavioral entropy
+* timestamp validity
+* fingerprint sanity
 
 ---
 
-## Security Model
+# Security Model
 
-### What ChronoSeal protects against
+## What ChronoSeal Protects Against
 
-| Threat | Mechanism |
-|---|---|
-| Playwright / Puppeteer Stealth | Mouse entropy validation rejects synthetic or absent movement |
-| Replay attacks | Hash chain — each heartbeat references the previous hash; old payloads are invalid |
-| Signature forgery | Ed25519 private key generated inside WASM, never serialised or exposed to JS |
-| Clock manipulation | Server enforces ±30s timestamp window |
-| Credential sharing | Session is bound to a keypair generated fresh on every page load |
-| Flooding with fake sessions | Per-session rate limiting (5 req / 10s); stale entries evicted every 60s |
-| Passive analysis of traffic | Server always returns `{"status":"ok"}` — rejections are silent |
-
-### What ChronoSeal does not claim
-
-ChronoSeal is a cost-raising mechanism, not an impenetrable barrier. A sufficiently motivated adversary with a real browser, real input devices, and the patience to reverse the WASM can bypass it. The goal is to make scraping expensive and operationally complex enough to be impractical at scale.
+| Threat                   | Mechanism                             |
+| ------------------------ | ------------------------------------- |
+| Replay attacks           | Blake3 chained heartbeat continuity   |
+| Signature forgery        | Ed25519 keypair generated inside WASM |
+| Session cloning          | Ephemeral session-bound keypairs      |
+| Static scraping          | Runtime participation requirements    |
+| Naive browser automation | Behavioral continuity validation      |
+| Timestamp replay         | Drift-window enforcement              |
+| Session flooding         | Per-session rate limiting             |
 
 ---
 
-## Architecture
+## Silent Rejection Model
 
-```
-chronoseal-rs/
-├── shared/          Shared types, Blake3 hash-chain logic, constants
-├── server/          Axum HTTP server
-│   ├── routes/      /init and /hb handlers
-│   ├── session.rs   Session lifecycle: create, verify, advance chain
-│   ├── crypto.rs    Ed25519 signature verification (BTreeMap canonical JSON)
-│   ├── trust.rs     Behavioral signal validation (mouse speed, pauses)
-│   ├── fingerprint  Browser fingerprint sanity checks
-│   ├── vm.rs        Random opcode program generator
-│   ├── ratelimit.rs Token-bucket rate limiter with periodic eviction
-│   └── cleanup.rs   Background task: expire sessions + evict rate limiter
-├── wasm/            Rust → WASM client module
-│   ├── crypto.rs    Ed25519 keypair, signing, hash computation
-│   └── vm.rs        Stack machine executor (PUSH/ADD/SUB/MUL/XOR/AND/OR/ROT/NOT/HASH)
-└── frontend/        Vanilla JS glue
-    ├── heartbeat.js Session init, heartbeat scheduling, chain advancement
-    └── entropy.js   Mouse event collection
-```
+ChronoSeal intentionally avoids explicit rejection semantics.
 
-### Stack Machine
-
-The server generates a random program (8–16 opcodes) on session init. The client executes it on every heartbeat and includes the resulting stack state in the signed payload. This makes each heartbeat structurally unique without requiring any server round-trip.
-
-| Opcode | Mnemonic | Effect |
-|--------|----------|--------|
-| `0x00` | PUSH u32 | Push 4-byte little-endian literal |
-| `0x01` | ADD | Pop 2, push `a + b` (wrapping) |
-| `0x02` | SUB | Pop 2, push `a - b` (wrapping) |
-| `0x03` | MUL | Pop 2, push `a * b` (wrapping) |
-| `0x04` | XOR | Pop 2, push `a ^ b` |
-| `0x05` | AND | Pop 2, push `a & b` |
-| `0x06` | OR  | Pop 2, push `a \| b` |
-| `0x07` | ROT | Pop 2, push `a.rotate_left(b % 32)` |
-| `0x08` | NOT | Pop 1, push `!a` (unary) |
-| `0x09` | HASH | Blake3 of entire stack → single u32 |
-
-### Hash Chain
-
-```
-H(0) = Blake3( session_id ║ pub_key ║ salt₀ )
-
-H(n) = Blake3( saltₙ₋₁ ║ H(n-1) ║ timestamp ║ Blake3(entropy_json) ║ Blake3(stack_json) )
-```
-
-Each heartbeat must present `H(n-1)` matching what the server stored. Forging a valid `H(n)` requires knowing the private key (for the signature), the salt (server-side only), and all prior state.
-
-### Signature Canonical Form
-
-The client signs a JSON object with keys sorted alphabetically (matching `JSON.stringify(obj, Object.keys(obj).sort())`):
+Invalid sessions may still receive:
 
 ```json
-{
-  "entropyData":  { "events": [ { "x": …, "y": …, "t": … } ] },
-  "fingerprint":  { "aspectRatio": "…", "devicePixelRatio": "…", "hardwareConcurrency": … },
-  "prevHash":     "hex…",
-  "sessionId":    "hex…",
-  "stackState":   { "stack": […], "ip": … },
-  "timestamp":    1234567890123
-}
+{ "status": "ok" }
 ```
 
-The server reconstructs this using `BTreeMap` (alphabetical key order) before calling `VerifyingKey::verify_strict`.
+This prevents:
+
+* oracle-style probing
+* protocol learning
+* easy automation tuning
+* behavioral enumeration
 
 ---
 
-## SQLite Schema
+## What ChronoSeal Does Not Claim
+
+ChronoSeal is a cost-raising mechanism, not an impenetrable barrier.
+
+A sufficiently motivated adversary with:
+
+* real browsers
+* genuine input devices
+* enough reverse engineering effort
+
+can eventually bypass the system.
+
+The goal is to make automation:
+
+* expensive
+* operationally complex
+* difficult to scale
+* harder to replay deterministically
+
+---
+
+# Architecture
+
+```text
+chronoseal-rs/
+├── shared/          Shared types, constants, hash-chain logic
+├── server/          Axum HTTP daemon
+│   ├── routes/      API routes
+│   ├── session.rs   Session lifecycle management
+│   ├── crypto.rs    Ed25519 verification
+│   ├── trust.rs     Behavioral validation
+│   ├── fingerprint/ Browser sanity validation
+│   ├── vm.rs        Random opcode generator
+│   ├── ratelimit.rs Token bucket limiter
+│   ├── cleanup.rs   Session expiration lifecycle
+│   └── metrics.rs   Prometheus metrics
+├── wasm/            Rust → WASM runtime
+│   ├── crypto.rs    Signing + hash chaining
+│   └── vm.rs        Stack-machine executor
+├── frontend/        Lightweight JS integration
+├── scripts/         Build/install/dev scripts
+└── docs/            Project documentation
+```
+
+---
+
+# Stack Machine
+
+ChronoSeal includes a lightweight randomized stack-machine execution engine.
+
+The server generates a randomized opcode program during session initialization.
+
+The client executes this program on every heartbeat and includes the resulting stack state in the signed payload.
+
+This makes heartbeat payloads structurally dynamic.
+
+## Supported Opcodes
+
+| Opcode | Mnemonic | Effect                  |
+| ------ | -------- | ----------------------- |
+| `0x00` | PUSH     | Push literal            |
+| `0x01` | ADD      | Wrapping addition       |
+| `0x02` | SUB      | Wrapping subtraction    |
+| `0x03` | MUL      | Wrapping multiplication |
+| `0x04` | XOR      | Bitwise XOR             |
+| `0x05` | AND      | Bitwise AND             |
+| `0x06` | OR       | Bitwise OR              |
+| `0x07` | ROT      | Rotate left             |
+| `0x08` | NOT      | Unary inversion         |
+| `0x09` | HASH     | Blake3 stack hash       |
+
+---
+
+# Hash Chain
+
+ChronoSeal uses Blake3 chained continuity validation.
+
+## Initial Hash
+
+```text
+H(0) = Blake3( session_id ║ public_key ║ salt₀ )
+```
+
+## Heartbeat Progression
+
+```text
+H(n) = Blake3(
+    saltₙ₋₁ ║
+    H(n-1) ║
+    timestamp ║
+    Blake3(entropy_json) ║
+    Blake3(stack_json)
+)
+```
+
+Each heartbeat depends on:
+
+* prior continuity
+* prior server-issued salt
+* behavioral entropy
+* VM execution result
+* timestamp progression
+
+---
+
+# Signature Canonicalization
+
+Heartbeat payloads are serialized into canonical key order before signing.
+
+The server reconstructs payloads identically before:
+
+* Ed25519 verification
+* hash progression validation
+
+This prevents:
+
+* serialization inconsistencies
+* ambiguous signing layouts
+* malformed payload tricks
+
+---
+
+# SQLite Schema
 
 ```sql
 CREATE TABLE IF NOT EXISTS sessions (
@@ -139,101 +341,196 @@ CREATE TABLE IF NOT EXISTS sessions (
 );
 ```
 
-Sessions are stored in an in-memory SQLite database. All session state is lost on server restart by design — clients re-initialise transparently.
+ChronoSeal intentionally uses ephemeral session persistence.
+
+Session continuity is designed to reset transparently.
 
 ---
 
-## Build
+# Runtime Architecture
 
-### Prerequisites
+## Server Runtime
 
-- Rust stable (≥ 1.87)
-- [`wasm-pack`](https://rustwasm.github.io/wasm-pack/installer/)
+* Rust
+* Axum
+* Tokio
+* SQLite
+* `r2d2`
+* `thiserror`
 
-### WASM
+## Browser Runtime
 
-```bash
-wasm-pack build wasm --target web --release
-mv wasm/pkg frontend/pkg
-```
-
-### Server
-
-```bash
-cargo build -p server --release
-```
-
-### Dev (all-in-one)
-
-```bash
-bash scripts/dev.sh
-```
-
-The server serves the `frontend/` directory statically at `/` and the API at `/init` and `/hb`.
+* Rust → WASM
+* Ed25519 signing
+* Blake3 chaining
+* stack-machine execution
 
 ---
 
-## Deployment
+# Deployment
 
-### Native + systemd
+## Recommended Installation
 
 ```bash
-cargo build -p server --release
-sudo cp target/release/server /usr/local/bin/chronoseal
+sudo bash scripts/install.sh
+```
+
+The installer:
+
+* creates `chronoseal` service user
+* builds release artifacts
+* installs frontend assets
+* deploys hardened systemd service
+* enables and starts daemon
+
+---
+
+## Manual Installation
+
+```bash
+bash scripts/build.sh
+
+sudo cp target/release/chronoseal /usr/local/bin/
 sudo cp chronoseal.service /etc/systemd/system/
+
 sudo systemctl daemon-reload
 sudo systemctl enable --now chronoseal
 ```
 
-### Docker
+---
+
+## Docker
 
 ```bash
 docker compose up -d --build
 ```
 
-### Reverse Proxy
-
-Place ChronoSeal behind nginx, Nginx Proxy Manager, or HAProxy. Enable:
-
-- TLS 1.3
-- HTTP/2
-- Aggressive upstream timeouts (the heartbeat interval is 12–25s)
-
 ---
 
-## Integration
+# Development
 
-Drop two lines into any protected page:
+## Full Build
 
-```html
-<script type="module" src="/pkg/antibot_wasm.js"></script>
-<script type="module" src="/main.js"></script>
+```bash
+bash scripts/build.sh
 ```
 
-`main.js` calls `initHeartbeat()` which handles WASM loading, session init, and schedules all subsequent heartbeats automatically. There is no visible UI, no CAPTCHA, no user interaction required.
+## Development Mode
+
+```bash
+bash scripts/dev.sh
+```
+
+## Direct Execution
+
+```bash
+cargo run -p server -- run --bind 127.0.0.1:3000
+```
 
 ---
 
-## Configuration
+# Prerequisites
 
-All tunable constants are in `shared/src/constants.rs`:
+* Rust stable ≥ 1.87
+* `wasm-pack`
 
-| Constant | Default | Description |
-|---|---|---|
-| `SESSION_ID_LEN` | 32 bytes | Session ID entropy |
-| `SALT_LEN` | 16 bytes | Per-heartbeat salt size |
-| `HEARTBEAT_MIN_INTERVAL_MS` | 12 000 ms | Minimum heartbeat interval |
-| `HEARTBEAT_MAX_INTERVAL_MS` | 25 000 ms | Maximum heartbeat interval (uniform jitter) |
-| `EXPIRATION_MINUTES` | 30 min | Session lifetime after last heartbeat |
-| `RATE_LIMIT_COUNT` | 5 | Max heartbeats per window |
-| `RATE_LIMIT_WINDOW_SECS` | 10 s | Rate limit window |
-| `MAX_TIMESTAMP_DRIFT_MS` | 30 000 ms | Anti-replay timestamp window |
-| `MIN_MOUSE_TOTAL_DIST` | 10.0 px | Minimum cumulative mouse travel |
-| `MAX_MOUSE_AVG_SPEED` | 2.0 px/ms | Maximum average mouse speed |
-| `MIN_PAUSE_COUNT` | 1 | Minimum mouse pause events |
+Install:
+
+```bash
+cargo install wasm-pack
+```
 
 ---
 
-## License
+# Configuration
+
+## Precedence
+
+```text
+CLI flags > CHRONOSEAL_* environment variables > config file > defaults
+```
+
+## Default Config Locations
+
+```text
+/etc/chronoseal/config.toml
+$XDG_CONFIG_HOME/chronoseal/config.toml
+~/.config/chronoseal/config.toml
+```
+
+## Runtime State
+
+```text
+~/.local/state/chronoseal/
+```
+
+---
+
+# Observability
+
+ChronoSeal exposes:
+
+* health probes
+* runtime statistics
+* Prometheus metrics
+
+## Metrics Example
+
+```bash
+chronoseal metrics
+```
+
+```text
+# HELP chronoseal_sessions Active ChronoSeal sessions
+# TYPE chronoseal_sessions gauge
+chronoseal_sessions 1
+```
+
+---
+
+# Lightweight Runtime
+
+Current release artifacts:
+
+```text
+chronoseal             ~8.5 MB
+chronoseal_wasm.wasm  ~719 KB
+```
+
+ChronoSeal intentionally avoids:
+
+* heavyweight frontend frameworks
+* Electron-style packaging
+* telemetry-heavy dependencies
+* oversized runtime models
+
+---
+
+# Philosophy
+
+ChronoSeal is intentionally not:
+
+* a surveillance framework
+* invasive browser fingerprinting
+* a CAPTCHA replacement
+* a telemetry ecosystem
+
+ChronoSeal is:
+
+* a cryptographic attestation runtime
+* a behavioral continuity engine
+* a proof-of-runtime framework
+* a lightweight Unix-native daemon
+
+---
+
+# License
 
 [MIT OR Apache-2.0](LICENSE)
+
+---
+
+# Project
+
+GitHub:
+https://github.com/thakares/chronoseal-rs
