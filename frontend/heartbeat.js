@@ -1,8 +1,10 @@
-import init, { generate_keypair, sign_message, compute_next_hash, run_program } from './pkg/antibot_wasm.js';
+import init, { generate_keypair, sign_message, compute_next_hash, run_program } from './pkg/chronoseal_wasm.js';
 import { collectEntropy } from './entropy.js';
 import { sendRequest } from './transport.js';
 
 let session, prevHash, currentSalt, opcodesB64, lastTime;
+let minInterval = 12000;
+let maxInterval = 25000;
 
 export async function initHeartbeat() {
     await init();
@@ -12,12 +14,14 @@ export async function initHeartbeat() {
     prevHash = initResp.initial_hash;
     currentSalt = initResp.salt;
     opcodesB64 = initResp.opcodes_b64;
+    minInterval = initResp.heartbeat_min_interval_ms || 12000;
+    maxInterval = initResp.heartbeat_max_interval_ms || 25000;
     lastTime = performance.now();
     scheduleNext();
 }
 
 function scheduleNext() {
-    const delay = 12000 + Math.random() * 13000;
+    const delay = minInterval + Math.random() * (maxInterval - minInterval);
     setTimeout(sendHeartbeat, delay);
 }
 

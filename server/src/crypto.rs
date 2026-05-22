@@ -6,9 +6,7 @@ pub fn verify_signature(
     pub_key_bytes: &[u8],
     req: &HeartbeatRequest,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let pk = VerifyingKey::from_bytes(
-        &pub_key_bytes.try_into().map_err(|_| "invalid pubkey")?,
-    )?;
+    let pk = VerifyingKey::from_bytes(&pub_key_bytes.try_into().map_err(|_| "invalid pubkey")?)?;
     let sig_bytes = hex::decode(&req.signature)?;
     let sig = Signature::from_slice(&sig_bytes)?;
 

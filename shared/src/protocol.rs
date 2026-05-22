@@ -12,6 +12,8 @@ pub struct InitResponse {
     pub opcodes_b64: String,
     pub initial_hash: String,
     pub expires_at: u64,
+    pub heartbeat_min_interval_ms: u64,
+    pub heartbeat_max_interval_ms: u64,
 }
 
 #[derive(Deserialize, Serialize)]

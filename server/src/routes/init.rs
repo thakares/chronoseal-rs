@@ -1,17 +1,21 @@
-use axum::{extract::State, http::StatusCode, Json};
-use std::sync::Arc;
-use shared::protocol::{InitRequest, InitResponse};
+use crate::errors::SessionError;
 use crate::session::AppState;
+use axum::{extract::State, Json};
+use shared::protocol::{InitRequest, InitResponse};
+use std::sync::Arc;
 
 pub async fn handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<InitRequest>,
-) -> Result<Json<InitResponse>, (StatusCode, String)> {
-    let db = state.db.lock().await;
-    crate::session::create_session(&db, &payload.public_key)
-        .map(Json)
-        .map_err(|e| {
-            tracing::error!("Init error: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal".into())
-        })
+) -> Result<Json<InitResponse>, SessionError> {
+    let config = {
+        if let Ok(cfg) = state.config.read() {
+            cfg.clone()
+        } else {
+            crate::config::Config::default()
+        }
+    };
+    let conn = state.db_pool.get()?;
+    let resp = crate::session::create_session(&conn, &config, &payload.public_key)?;
+    Ok(Json(resp))
 }

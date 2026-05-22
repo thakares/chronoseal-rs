@@ -10,17 +10,25 @@ pub struct StoreStats {
     pub max_chain_length: u64,
 }
 
-pub fn init_db(path: &Path) -> Result<Connection, rusqlite::Error> {
-    if path == Path::new(":memory:") {
-        return init_schema(Connection::open_in_memory()?);
-    }
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
-    }
-    init_schema(Connection::open(path)?)
+pub type DbPool = r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>;
+
+pub fn init_pool(path: &Path) -> Result<DbPool, Box<dyn std::error::Error>> {
+    let manager = if path == Path::new(":memory:") {
+        r2d2_sqlite::SqliteConnectionManager::memory()
+    } else {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        r2d2_sqlite::SqliteConnectionManager::file(path)
+    };
+
+    let pool = r2d2::Pool::new(manager)?;
+    let conn = pool.get()?;
+    init_schema(&conn)?;
+    Ok(pool)
 }
 
-fn init_schema(conn: Connection) -> Result<Connection, rusqlite::Error> {
+fn init_schema(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS sessions (
             session_id TEXT PRIMARY KEY,
@@ -33,7 +41,7 @@ fn init_schema(conn: Connection) -> Result<Connection, rusqlite::Error> {
             expires_at INTEGER NOT NULL
         );",
     )?;
-    Ok(conn)
+    Ok(())
 }
 
 pub fn stats(conn: &Connection) -> Result<StoreStats, rusqlite::Error> {
@@ -57,5 +65,8 @@ pub fn stats(conn: &Connection) -> Result<StoreStats, rusqlite::Error> {
 }
 
 pub fn current_time_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
 }

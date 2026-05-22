@@ -3,7 +3,7 @@ use std::cell::RefCell;
 use wasm_bindgen::prelude::*;
 
 thread_local! {
-    static KEYPAIR: RefCell<Option<SigningKey>> = RefCell::new(None);
+    static KEYPAIR: RefCell<Option<SigningKey>> = const { RefCell::new(None) };
 }
 
 #[wasm_bindgen]
@@ -51,10 +51,8 @@ pub fn compute_next_hash(
 ) -> String {
     let prev = hex::decode(prev_hash_hex).unwrap_or_default();
     let salt = hex::decode(salt_hex).unwrap_or_default();
-    let entropy =
-        serde_json::from_str::<shared::protocol::EntropyData>(entropy_data_json).unwrap();
-    let stack =
-        serde_json::from_str::<shared::protocol::StackState>(stack_state_json).unwrap();
+    let entropy = serde_json::from_str::<shared::protocol::EntropyData>(entropy_data_json).unwrap();
+    let stack = serde_json::from_str::<shared::protocol::StackState>(stack_state_json).unwrap();
     let new = shared::hashing::next_chain_hash(&prev, timestamp, &entropy, &stack, &salt);
     hex::encode(new)
 }

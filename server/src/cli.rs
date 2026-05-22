@@ -52,15 +52,21 @@ impl GlobalArgs {
 #[derive(Debug, Subcommand)]
 pub enum Command {
     /// Run the ChronoSeal daemon.
-    #[command(after_help = "Examples:\n  chronoseal run\n  chronoseal run --bind 127.0.0.1:3000 --frontend-dir /srv/chronoseal/frontend\n  CHRONOSEAL_BIND=0.0.0.0:3000 chronoseal run")]
+    #[command(
+        after_help = "Examples:\n  chronoseal run\n  chronoseal run --bind 127.0.0.1:3000 --frontend-dir /srv/chronoseal/frontend\n  CHRONOSEAL_BIND=0.0.0.0:3000 chronoseal run"
+    )]
     Run(RunArgs),
 
     /// Report whether the configured daemon is reachable and which PID file is present.
-    #[command(after_help = "Examples:\n  chronoseal status\n  chronoseal status --format json\n  chronoseal status --pid-file /run/chronoseal.pid")]
+    #[command(
+        after_help = "Examples:\n  chronoseal status\n  chronoseal status --format json\n  chronoseal status --pid-file /run/chronoseal.pid"
+    )]
     Status(RuntimeArgs),
 
     /// Perform a daemon health probe.
-    #[command(after_help = "Examples:\n  chronoseal health\n  chronoseal health --format json\n  chronoseal health --bind 127.0.0.1:3000")]
+    #[command(
+        after_help = "Examples:\n  chronoseal health\n  chronoseal health --format json\n  chronoseal health --bind 127.0.0.1:3000"
+    )]
     Health(RuntimeArgs),
 
     /// Validate and print effective configuration.
@@ -76,7 +82,9 @@ pub enum Command {
     Version,
 
     /// Print Prometheus metrics from the running daemon.
-    #[command(after_help = "Examples:\n  chronoseal metrics\n  chronoseal metrics --bind 127.0.0.1:3000")]
+    #[command(
+        after_help = "Examples:\n  chronoseal metrics\n  chronoseal metrics --bind 127.0.0.1:3000"
+    )]
     Metrics(RuntimeArgs),
 
     /// Print service statistics from the running daemon.
@@ -84,7 +92,9 @@ pub enum Command {
     Stats(RuntimeArgs),
 
     /// Generate shell completions.
-    #[command(after_help = "Examples:\n  chronoseal completion bash\n  chronoseal completion zsh > ~/.zfunc/_chronoseal")]
+    #[command(
+        after_help = "Examples:\n  chronoseal completion bash\n  chronoseal completion zsh > ~/.zfunc/_chronoseal"
+    )]
     Completion { shell: clap_complete::Shell },
 }
 
@@ -120,13 +130,17 @@ pub struct RuntimeArgs {
 #[derive(Debug, Subcommand)]
 pub enum ConfigCommand {
     /// Validate configuration and print the effective values.
-    #[command(after_help = "Examples:\n  chronoseal config check\n  chronoseal config check --config /etc/chronoseal/config.toml\n  chronoseal config check --output json")]
+    #[command(
+        after_help = "Examples:\n  chronoseal config check\n  chronoseal config check --config /etc/chronoseal/config.toml\n  chronoseal config check --output json"
+    )]
     Check(RuntimeArgs),
 }
 
 #[derive(Debug, Subcommand)]
 pub enum GenerateCommand {
     /// Generate an Ed25519 keypair as hex-encoded JSON/YAML/text.
-    #[command(after_help = "Examples:\n  chronoseal generate keypair\n  chronoseal generate keypair --format json")]
+    #[command(
+        after_help = "Examples:\n  chronoseal generate keypair\n  chronoseal generate keypair --format json"
+    )]
     Keypair,
 }

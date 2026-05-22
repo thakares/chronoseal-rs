@@ -14,6 +14,16 @@ pub struct Config {
     pub db_path: PathBuf,
     pub frontend_dir: PathBuf,
     pub log_file: Option<PathBuf>,
+    pub heartbeat_min_interval_ms: u64,
+    pub heartbeat_max_interval_ms: u64,
+    pub expiration_minutes: i64,
+    pub rate_limit_count: u32,
+    pub rate_limit_window_secs: u64,
+    pub max_timestamp_drift_ms: i64,
+    pub min_mouse_total_dist: f64,
+    pub max_mouse_avg_speed: f64,
+    pub min_pause_count: u32,
+    pub require_mouse_activity: bool,
 }
 
 impl Default for Config {
@@ -24,6 +34,16 @@ impl Default for Config {
             db_path: default_state_dir().join("chronoseal.sqlite"),
             frontend_dir: PathBuf::from("/usr/share/chronoseal/frontend"),
             log_file: None,
+            heartbeat_min_interval_ms: 12_000,
+            heartbeat_max_interval_ms: 25_000,
+            expiration_minutes: 30,
+            rate_limit_count: 5,
+            rate_limit_window_secs: 10,
+            max_timestamp_drift_ms: 30_000,
+            min_mouse_total_dist: 10.0,
+            max_mouse_avg_speed: 2.0,
+            min_pause_count: 1,
+            require_mouse_activity: true,
         }
     }
 }
@@ -32,7 +52,10 @@ impl Config {
     pub fn load(config_path: Option<&Path>) -> Result<Self, ConfigError> {
         let mut config = Self::default();
 
-        if let Some(path) = config_path.map(Path::to_path_buf).or_else(discover_config_path) {
+        if let Some(path) = config_path
+            .map(Path::to_path_buf)
+            .or_else(discover_config_path)
+        {
             let raw = fs::read_to_string(&path).map_err(|source| ConfigError::Read {
                 path: path.clone(),
                 source,
@@ -96,6 +119,56 @@ impl Config {
         if let Ok(value) = env::var("CHRONOSEAL_LOG_FILE") {
             self.log_file = Some(PathBuf::from(value));
         }
+        if let Ok(value) = env::var("CHRONOSEAL_HEARTBEAT_MIN_INTERVAL_MS") {
+            if let Ok(val) = value.parse() {
+                self.heartbeat_min_interval_ms = val;
+            }
+        }
+        if let Ok(value) = env::var("CHRONOSEAL_HEARTBEAT_MAX_INTERVAL_MS") {
+            if let Ok(val) = value.parse() {
+                self.heartbeat_max_interval_ms = val;
+            }
+        }
+        if let Ok(value) = env::var("CHRONOSEAL_EXPIRATION_MINUTES") {
+            if let Ok(val) = value.parse() {
+                self.expiration_minutes = val;
+            }
+        }
+        if let Ok(value) = env::var("CHRONOSEAL_RATE_LIMIT_COUNT") {
+            if let Ok(val) = value.parse() {
+                self.rate_limit_count = val;
+            }
+        }
+        if let Ok(value) = env::var("CHRONOSEAL_RATE_LIMIT_WINDOW_SECS") {
+            if let Ok(val) = value.parse() {
+                self.rate_limit_window_secs = val;
+            }
+        }
+        if let Ok(value) = env::var("CHRONOSEAL_MAX_TIMESTAMP_DRIFT_MS") {
+            if let Ok(val) = value.parse() {
+                self.max_timestamp_drift_ms = val;
+            }
+        }
+        if let Ok(value) = env::var("CHRONOSEAL_MIN_MOUSE_TOTAL_DIST") {
+            if let Ok(val) = value.parse() {
+                self.min_mouse_total_dist = val;
+            }
+        }
+        if let Ok(value) = env::var("CHRONOSEAL_MAX_MOUSE_AVG_SPEED") {
+            if let Ok(val) = value.parse() {
+                self.max_mouse_avg_speed = val;
+            }
+        }
+        if let Ok(value) = env::var("CHRONOSEAL_MIN_PAUSE_COUNT") {
+            if let Ok(val) = value.parse() {
+                self.min_pause_count = val;
+            }
+        }
+        if let Ok(value) = env::var("CHRONOSEAL_REQUIRE_MOUSE_ACTIVITY") {
+            if let Ok(val) = value.parse() {
+                self.require_mouse_activity = val;
+            }
+        }
     }
 }
 
@@ -122,7 +195,9 @@ impl std::fmt::Display for ConfigError {
             Self::Parse { path, source } => {
                 write!(f, "failed to parse {} as TOML: {source}", path.display())
             }
-            Self::InvalidBind { bind, source } => write!(f, "invalid bind address {bind}: {source}"),
+            Self::InvalidBind { bind, source } => {
+                write!(f, "invalid bind address {bind}: {source}")
+            }
         }
     }
 }
@@ -130,6 +205,12 @@ impl std::fmt::Display for ConfigError {
 impl std::error::Error for ConfigError {}
 
 fn discover_config_path() -> Option<PathBuf> {
+    if let Ok(path) = env::var("CHRONOSEAL_CONFIG") {
+        let p = PathBuf::from(path);
+        if p.is_file() {
+            return Some(p);
+        }
+    }
     user_config_candidates()
         .into_iter()
         .find(|candidate| candidate.is_file())

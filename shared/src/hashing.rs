@@ -1,5 +1,5 @@
-use blake3::Hasher;
 use crate::protocol::{EntropyData, StackState};
+use blake3::Hasher;
 
 /// Initial hash for a brand-new session: Blake3(session_id || pub_key || salt)
 pub fn initial_hash(session_id: &str, pub_key: &[u8], salt: &[u8]) -> Vec<u8> {

@@ -41,7 +41,9 @@ pub struct StatusReport {
 
 impl TextOutput for StatusReport {
     fn to_text(&self) -> String {
-        let pid = self.pid.map_or_else(|| "unknown".to_string(), |pid| pid.to_string());
+        let pid = self
+            .pid
+            .map_or_else(|| "unknown".to_string(), |pid| pid.to_string());
         format!(
             "running={}\nhealthy={}\nbind={}\npid_file={}\npid={}",
             self.running, self.healthy, self.bind, self.pid_file, pid
@@ -106,13 +108,11 @@ impl TextOutput for StoreStats {
 pub async fn run_daemon(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     install_pid_file(&config.pid_file)?;
 
-    let conn = storage::init_db(&config.db_path)?;
+    let db_pool = storage::init_pool(&config.db_path)?;
     let state = Arc::new(session::AppState {
-        db: Mutex::new(conn),
-        rate_limiter: Mutex::new(RateLimiter::new(
-            shared::constants::RATE_LIMIT_COUNT,
-            shared::constants::RATE_LIMIT_WINDOW_SECS,
-        )),
+        db_pool,
+        rate_limiter: Mutex::new(RateLimiter::new()),
+        config: std::sync::RwLock::new(config.clone()),
     });
 
     let bg_state = state.clone();
@@ -124,16 +124,19 @@ pub async fn run_daemon(config: Config) -> Result<(), Box<dyn std::error::Error>
         .route("/health", get(health_handler))
         .route("/metrics", get(metrics_handler))
         .route("/stats", get(stats_handler))
-        .nest_service("/", tower_http::services::ServeDir::new(&config.frontend_dir))
+        .nest_service(
+            "/",
+            tower_http::services::ServeDir::new(&config.frontend_dir),
+        )
         .layer(tower_http::cors::CorsLayer::permissive())
         .layer(axum::middleware::from_fn(crate::middleware::log_request))
-        .with_state(state);
+        .with_state(state.clone());
 
     let addr: SocketAddr = config.bind.parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
     info!(bind = %config.bind, "chronoseal daemon started");
 
-    let shutdown = signal_task(config.clone());
+    let shutdown = signal_task(state.clone());
     let result = axum::serve(listener, app)
         .with_graceful_shutdown(shutdown)
         .await;
@@ -199,13 +202,19 @@ pub fn version() -> VersionReport {
 }
 
 async fn health_handler() -> impl IntoResponse {
-    (StatusCode::OK, Json(serde_json::json!({ "status": "healthy" })))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "status": "healthy" })),
+    )
 }
 
 async fn stats_handler(
     axum::extract::State(state): axum::extract::State<Arc<session::AppState>>,
 ) -> Result<Json<StoreStats>, (StatusCode, String)> {
-    let db = state.db.lock().await;
+    let db = state
+        .db_pool
+        .get()
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
     storage::stats(&db)
         .map(Json)
         .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))
@@ -214,7 +223,10 @@ async fn stats_handler(
 async fn metrics_handler(
     axum::extract::State(state): axum::extract::State<Arc<session::AppState>>,
 ) -> Result<String, (StatusCode, String)> {
-    let db = state.db.lock().await;
+    let db = state
+        .db_pool
+        .get()
+        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
     storage::stats(&db)
         .map(|stats| {
             format!(
@@ -225,7 +237,7 @@ async fn metrics_handler(
         .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))
 }
 
-async fn signal_task(config: Config) {
+async fn signal_task(state: Arc<session::AppState>) {
     let shutdown = Arc::new(Notify::new());
 
     #[cfg(unix)]
@@ -248,19 +260,23 @@ async fn signal_task(config: Config) {
             }
         });
 
-        let hup_config = config.clone();
+        let state_for_hup = state.clone();
         tokio::spawn(async move {
             let mut sighup = signal(SignalKind::hangup()).expect("install SIGHUP handler");
             while sighup.recv().await.is_some() {
                 match Config::load(None) {
-                    Ok(reloaded) => info!(
-                        bind = %reloaded.bind,
-                        db_path = %reloaded.db_path.display(),
-                        "received SIGHUP; configuration reloaded"
-                    ),
+                    Ok(reloaded) => {
+                        info!(
+                            bind = %reloaded.bind,
+                            db_path = %reloaded.db_path.display(),
+                            "received SIGHUP; configuration reloaded"
+                        );
+                        if let Ok(mut config_write) = state_for_hup.config.write() {
+                            *config_write = reloaded;
+                        }
+                    }
                     Err(err) => warn!(error = %err, "received SIGHUP; configuration reload failed"),
                 }
-                let _ = &hup_config;
             }
         });
 
@@ -312,7 +328,9 @@ fn read_pid(path: &Path) -> Option<u32> {
 fn http_get(bind: &str, path: &str) -> Result<String, Box<dyn std::error::Error>> {
     let mut stream = TcpStream::connect_timeout(&bind.parse()?, Duration::from_secs(2))?;
     stream.set_read_timeout(Some(Duration::from_secs(2)))?;
-    stream.write_all(format!("GET {path} HTTP/1.1\r\nHost: chronoseal\r\nConnection: close\r\n\r\n").as_bytes())?;
+    stream.write_all(
+        format!("GET {path} HTTP/1.1\r\nHost: chronoseal\r\nConnection: close\r\n\r\n").as_bytes(),
+    )?;
 
     let mut response = String::new();
     stream.read_to_string(&mut response)?;

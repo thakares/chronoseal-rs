@@ -2,6 +2,7 @@ mod cleanup;
 mod cli;
 mod config;
 mod crypto;
+mod errors;
 mod fingerprint;
 mod middleware;
 mod output;
@@ -29,6 +30,9 @@ async fn main() {
 
 async fn try_main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
+    if let Some(config_path) = cli.globals.config.as_deref() {
+        std::env::set_var("CHRONOSEAL_CONFIG", config_path);
+    }
     let log_filter = cli.globals.log.as_deref().unwrap_or("info");
     let log_file = log_file_for_command(&cli);
     let _log_guard = init_logging(log_filter, log_file)?;
