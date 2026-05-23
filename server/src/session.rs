@@ -4,6 +4,16 @@ pub struct AppState {
     pub config: std::sync::RwLock<crate::config::Config>,
 }
 
+impl AppState {
+    pub fn get_config(&self) -> crate::config::Config {
+        if let Ok(cfg) = self.config.read() {
+            cfg.clone()
+        } else {
+            crate::config::Config::default()
+        }
+    }
+}
+
 use crate::{crypto, fingerprint, storage, trust, vm};
 use rusqlite::params;
 use shared::protocol::{HeartbeatRequest, InitResponse};

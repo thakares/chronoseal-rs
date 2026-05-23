@@ -8,13 +8,7 @@ pub async fn handler(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<InitRequest>,
 ) -> Result<Json<InitResponse>, SessionError> {
-    let config = {
-        if let Ok(cfg) = state.config.read() {
-            cfg.clone()
-        } else {
-            crate::config::Config::default()
-        }
-    };
+    let config = state.get_config();
     let conn = state.db_pool.get()?;
     let resp = crate::session::create_session(&conn, &config, &payload.public_key)?;
     Ok(Json(resp))

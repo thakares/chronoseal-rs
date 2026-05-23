@@ -20,13 +20,7 @@ pub async fn cleanup_loop(state: Arc<AppState>) {
 
         // Evict stale rate-limiter entries to prevent unbounded HashMap growth.
         {
-            let window_secs = {
-                if let Ok(config) = state.config.read() {
-                    config.rate_limit_window_secs
-                } else {
-                    10 // fallback default
-                }
-            };
+            let window_secs = state.get_config().rate_limit_window_secs;
             let mut rl = state.rate_limiter.lock().await;
             rl.evict_stale(window_secs);
         }

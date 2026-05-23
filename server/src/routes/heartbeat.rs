@@ -10,11 +10,8 @@ pub async fn handler(
     // Rate limiting
     {
         let (limit, window_secs) = {
-            if let Ok(cfg) = state.config.read() {
-                (cfg.rate_limit_count, cfg.rate_limit_window_secs)
-            } else {
-                (5, 10)
-            }
+            let cfg = state.get_config();
+            (cfg.rate_limit_count, cfg.rate_limit_window_secs)
         };
         let mut rl = state.rate_limiter.lock().await;
         if !rl.check(&payload.session_id, limit, window_secs) {
@@ -29,13 +26,7 @@ pub async fn handler(
         }
     }
 
-    let config = {
-        if let Ok(cfg) = state.config.read() {
-            cfg.clone()
-        } else {
-            crate::config::Config::default()
-        }
-    };
+    let config = state.get_config();
     let conn = match state.db_pool.get() {
         Ok(c) => c,
         Err(e) => {
