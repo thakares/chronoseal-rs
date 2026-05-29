@@ -14,8 +14,8 @@
 
 <p align="center">
   <a href="https://github.com/thakares/chronoseal-rs/blob/main/LICENSE.md">
-    <img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="License: GPL-3.0">
-  </a>
+  <img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="License: MIT OR Apache-2.0">
+</a>
   <a href="https://github.com/thakares/chronoseal-rs">
     <img src="https://img.shields.io/badge/rust-stable%20%E2%89%A5%201.87-orange.svg" alt="Rust stable ≥ 1.87">
   </a>
