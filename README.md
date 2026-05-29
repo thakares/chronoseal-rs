@@ -72,7 +72,7 @@ See [docs/REFRACTORING-v0.6.0.md](docs/REFRACTORING-v0.6.0.md) for the full refa
 * Lightweight deployment footprint
 * Docker and native deployment support
 * Adaptive trust scoring
-* Apache/MIT licensed
+* GPLv3 licensed
 
 ---
 
@@ -781,15 +781,5 @@ Security hardening evolves continuously.
 | HTML       | 0.9%   |
 
 ---
-
-# License
-
-[GPL-3.0](LICENSE.md)
-
----
-
-# Project
-
-GitHub: https://github.com/thakares/chronoseal-rs
 
 Topics: `rust` · `cryptography` · `wasm` · `antibot` · `browser-security` · `behavioral-analysis` · `anti-scraping` · `headless-detection`
