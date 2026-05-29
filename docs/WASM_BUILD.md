@@ -1,22 +1,22 @@
 # ChronoSeal WASM Build Guide
 
-ChronoSeal uses a Rust-based WASM runtime to power browser-side attestation logic, signing, hash chaining, VM execution, and mutation commitment preview.
+ChronoSeal uses a Rust-generated WASM package for browser-side attestation. The package is built from `wasm/` and copied into `frontend/pkg`.
 
-## Why WASM
+## Responsibilities
 
-The WASM runtime provides a deterministic, sandboxed environment for the following tasks:
+The WASM runtime:
 
-* generate Ed25519 keypairs in-browser
-* sign canonical heartbeat payloads
-* execute randomized VM opcode programs
-* compute Blake3 hash chain progression
-* preview and commit synthetic gene mutations
+- generates a browser-local Ed25519 keypair
+- signs canonical heartbeat payloads
+- computes Blake3 hash-chain progression
+- executes server-issued VM opcode programs
+- initializes synthetic gene state
+- previews gene mutation commitments
+- commits or discards preview state after heartbeat response
 
-This enables server/client parity and prevents the private key from leaving the browser runtime.
+The WASM runtime is not treated as a secure enclave. The server independently recomputes deterministic state.
 
-## Build Requirements
-
-Install the Rust WASM target and `wasm-pack`:
+## Requirements
 
 ```bash
 rustup target add wasm32-unknown-unknown
@@ -29,7 +29,7 @@ Verify:
 wasm-pack --version
 ```
 
-## Build the WASM Module
+## Build
 
 From the repository root:
 
@@ -39,45 +39,41 @@ rm -rf frontend/pkg
 mv wasm/pkg frontend/pkg
 ```
 
-`--target web` produces an ES module compatible with the existing frontend JavaScript.
+`--target web` emits native ES modules compatible with the static frontend.
 
-`--release` enables optimizations for runtime performance and size.
+Development build:
 
-## Output
+```bash
+wasm-pack build wasm --target web
+rm -rf frontend/pkg
+mv wasm/pkg frontend/pkg
+```
 
-After a successful build, `frontend/pkg/` contains:
+Full project build:
 
-* `antibot_wasm.js`
-* `antibot_wasm_bg.wasm`
-* `antibot_wasm_bg.js`
-* `antibot_wasm.d.ts`
-* `antibot_wasm_bg.d.ts`
-* `package.json`
+```bash
+bash scripts/build.sh
+```
 
-The frontend expects the WASM package under `frontend/pkg/`.
+## Output Files
 
-## Runtime Exports
+The package name comes from the crate name `chronoseal-wasm`, so generated files use the `chronoseal_wasm` prefix.
 
-The WASM module exports the following functions:
+Expected `frontend/pkg/` contents include:
 
-* `generate_keypair()` — generate a new Ed25519 keypair and return public key hex
-* `get_public_key()` — return the current public key hex
-* `sign_message(msg)` — sign a UTF-8 payload and return the hex signature
-* `compute_next_hash(prev, ts, entropy, stack, salt)` — compute the next Blake3 chain hash
-* `run_program(b64)` — execute a base64 VM program and return stack state
-* `init_gene_state(gene_size)` — initialise the synthetic gene buffer
-* `preview_gene_commitment(order_b64)` — preview the next gene commitment from a mutation order
-* `commit_gene_preview()` — commit the previewed mutation after successful heartbeat
-* `discard_gene_preview()` — discard the previewed mutation after rejection or error
-* `current_gene_commitment()` — return the current committed gene commitment
+- `chronoseal_wasm.js`
+- `chronoseal_wasm_bg.wasm`
+- `chronoseal_wasm.d.ts`
+- `package.json`
 
-## Browser Integration
+Generated files in `wasm/pkg/` and `frontend/pkg/` are build artifacts and should be regenerated during release.
 
-The frontend imports the generated module like this:
+## Browser Import
 
 ```js
 import init, {
   generate_keypair,
+  get_public_key,
   sign_message,
   compute_next_hash,
   run_program,
@@ -86,48 +82,82 @@ import init, {
   commit_gene_preview,
   discard_gene_preview,
   current_gene_commitment
-} from './pkg/antibot_wasm.js';
+} from './pkg/chronoseal_wasm.js';
 ```
 
-`await init()` must be called before invoking any other exported function.
+Call `await init()` before using any exported function.
 
-## Deployment Note
+## Exported Functions
 
-The `.wasm` binary must be served with the correct MIME type:
+| Function | Signature | Failure value |
+|---|---|---|
+| `generate_keypair()` | `() -> string` | `""` only on unexpected failure |
+| `get_public_key()` | `() -> string` | `""` if no keypair exists |
+| `sign_message(msg)` | `(string) -> string` | `""` if no keypair exists or signing fails |
+| `compute_next_hash(prev, ts, entropy, stack, salt)` | `(string, u64, string, string, string) -> string` | panic/error path should be avoided by valid inputs |
+| `run_program(b64)` | `(string) -> JsValue` | returns empty/default stack state on invalid execution path |
+| `init_gene_state(gene_size)` | `(u32) -> bool` | `false` |
+| `preview_gene_commitment(order_b64, session_id, mutation_step, rounds)` | `(string, string, u64, u8) -> string` | `""` |
+| `commit_gene_preview()` | `() -> bool` | `false` |
+| `discard_gene_preview()` | `() -> void` | none |
+| `current_gene_commitment(session_id, mutation_step)` | `(string, u64) -> string` | `""` if no committed state exists |
 
+`rounds = 0` in `preview_gene_commitment` selects the shared default mutation round count.
+
+## Mutation State Lifecycle
+
+The browser must keep two gene states:
+
+- committed state: the last accepted state
+- preview state: candidate state for the heartbeat currently being sent
+
+Expected sequence:
+
+1. Call `init_gene_state(gene_size)` after `/init`.
+2. Call `preview_gene_commitment(order_b64, session_id, mutation_step, rounds)` before signing `/hb`.
+3. Include the returned commitment and mutation step in the signed heartbeat.
+4. If the response contains next-state fields, call `commit_gene_preview()`.
+5. If the heartbeat is rejected or errors, call `discard_gene_preview()`.
+
+Never commit preview state before the server accepts the heartbeat.
+
+## Hash-Chain Ordering
+
+After an accepted heartbeat, compute the next local hash with the salt that was active when the heartbeat was sent. Then replace the local salt with `next_salt`.
+
+Correct order:
+
+```js
+const sentSalt = currentSalt;
+currentSalt = resp.next_salt;
+prevHash = compute_next_hash(prevHash, timestamp, entropyJson, stackStateJson, sentSalt);
 ```
+
+This mirrors the server, which computes and stores the new hash before rotating to the next salt.
+
+## Serving WASM
+
+The `.wasm` file must be served with:
+
+```text
 Content-Type: application/wasm
 ```
 
-The built-in Axum static file handler already sets the appropriate MIME type for `.wasm` files.
+ChronoSeal's built-in static file service handles this for normal deployments.
 
-## Build Script
+## Validation
 
-Use the convenience script:
+Recommended checks after WASM changes:
 
 ```bash
-bash scripts/build.sh
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+wasm-pack build wasm --target web
 ```
 
-This builds the WASM package, moves it into `frontend/pkg/`, and builds the server binary.
-
-## Recommended Development Flow
-
-* For WASM-only changes:
+Then refresh `frontend/pkg`:
 
 ```bash
-wasm-pack build wasm --target web
 rm -rf frontend/pkg
 mv wasm/pkg frontend/pkg
 ```
-
-* For server-only changes:
-
-```bash
-cargo build -p server
-```
-
-## Notes
-
-Generated files in `wasm/pkg/` and `frontend/pkg/` are not tracked in source control.
-They are build artifacts and should be regenerated as part of the release workflow.

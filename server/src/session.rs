@@ -132,11 +132,8 @@ pub fn verify_heartbeat(
         config.mutation_rounds,
     )
     .map_err(|e| crate::errors::VerificationError::MutationProgram(e.to_string()))?;
-    let expected_gene_commitment = gene::commitment_hex_with_context(
-        &candidate_state,
-        &req.session_id,
-        req.mutation_step,
-    );
+    let expected_gene_commitment =
+        gene::commitment_hex_with_context(&candidate_state, &req.session_id, req.mutation_step);
     if req.gene_commitment != expected_gene_commitment {
         return Err(crate::errors::VerificationError::MutationCommitmentMismatch);
     }

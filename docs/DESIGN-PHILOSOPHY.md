@@ -1,58 +1,125 @@
 # ChronoSeal Design Philosophy
 
-ChronoSeal is built for operators who value clarity, stability, and Unix-native infrastructure.
+ChronoSeal is designed for operators who want a local, inspectable, Unix-native browser attestation layer rather than a hosted anti-bot black box.
 
-## Core Philosophy
+## Core Position
 
-ChronoSeal is a Unix-first, CLI-first cryptographic attestation daemon. It is intentionally designed to feel like infrastructure software such as `nginx`, `redis-server`, or `systemd` itself.
+ChronoSeal is infrastructure software. It should feel closer to `nginx`, `redis-server`, or a small system daemon than to a third-party analytics platform.
 
-### Design priorities
+Design priorities:
 
-* **Unix-native operation** — systemd integration, PID files, structured logs, and predictable lifecycle semantics.
-* **CLI as source of truth** — all runtime operations available through the command line.
-* **Minimal opacity** — no hidden telemetry, no opaque fingerprinting database.
-* **Privacy-first** — ephemeral session state and no persistent user profiling.
-* **Deterministic runtime behavior** — shared Rust/WASM implementation for the mutation engine and heartbeat protocol.
-* **Incremental cost escalation** — make automation painful to scale without claiming impossible security.
-* **Operational transparency** — expose health, metrics, status, and config as first-class artifacts.
+- CLI-first operation
+- explicit configuration
+- deterministic protocol behavior
+- small runtime surface
+- privacy-preserving state
+- observable health and metrics
+- no hidden telemetry
+- no persistent user profiling
 
-## Execution Model
+## What ChronoSeal Optimizes For
 
-ChronoSeal emphasizes deterministic, stateless request validation with a lightweight server-side session store.
+### Operator Control
 
-* The server persists only the small session state required for continuity.
-* The client executes a deterministic WASM runtime for every heartbeat.
-* The protocol is intentionally ambiguous on rejection to avoid leaking validation rules.
+Operators should be able to build, run, inspect, configure, monitor, and stop the service with ordinary Unix tools.
+
+This is why ChronoSeal provides:
+
+- `chronoseal run`
+- `chronoseal status`
+- `chronoseal health`
+- `chronoseal config check`
+- `chronoseal metrics`
+- `chronoseal stats`
+- shell completions
+- systemd integration
+
+### Determinism
+
+The protocol depends on deterministic agreement between server Rust and browser WASM.
+
+Shared logic belongs in `shared/` when divergence would create security or correctness risk. This includes:
+
+- protocol structs
+- hash-chain semantics
+- synthetic gene model
+- mutation opcode behavior
+- mutation order encoding
+
+### Cost Escalation
+
+ChronoSeal does not claim impossible security. It raises the cost of automation by making clients maintain:
+
+- a browser-local signing key
+- a signed canonical heartbeat payload
+- a Blake3 hash chain
+- VM execution output
+- server-issued mutation progression
+- plausible timing and interaction signals
+
+The objective is to make cheap automation brittle and expensive automation more complex.
+
+### Silent Rejection
+
+Heartbeat rejection is intentionally ambiguous. Invalid heartbeats receive the same `status` value as accepted heartbeats, but accepted responses include next-state fields.
+
+This avoids turning the API into a validation oracle. Integrators must check for `next_salt`, `next_mutation_step`, and `next_mutation_order_b64`.
+
+### Privacy
+
+ChronoSeal should not become a surveillance system.
+
+It avoids:
+
+- long-term user identifiers
+- browser history
+- cross-site identity graphs
+- fingerprint databases
+- behavioral profiling as a product feature
+
+It stores only the session state required for continuity.
 
 ## Non-Goals
 
-ChronoSeal does not aim to be:
+ChronoSeal is not:
 
-* a tracking platform
-* a browser fingerprinting database
-* a long-term behavioral analytics engine
-* a platform for user profiling
-* a SaaS or cloud-first service
-
-Instead, ChronoSeal aims to be an infrastructure layer that raises attacker cost while leaving legitimate users unobstructed.
+- a CAPTCHA
+- a fraud scoring engine
+- an authentication provider
+- a hosted SaaS product
+- a persistent fingerprinting system
+- a replacement for authorization checks
+- a complete defense against real browser farms
 
 ## Operational Assumptions
 
 ChronoSeal assumes:
 
-* the host environment is Linux
-* systemd is available for service management
-* TLS is used in production
-* browser clients can execute WASM
-* operators can manage native binaries and configuration files
+- Linux or a Unix-like host
+- systemd for production service management
+- TLS in production
+- browser clients can execute WASM
+- operators can manage config files and service users
+- application owners decide how attestation status gates protected resources
 
-## Privacy and Trust
+## Engineering Biases
 
-The project is designed so that the verification mechanism is:
+When the project faces tradeoffs, prefer:
 
-* ephemeral
-* difficult to reverse-engineer at scale
-* not based on personal identifiers
-* not dependent on long-term user history
+- explicit configuration over implicit magic
+- server-side recomputation over browser trust
+- bounded deterministic execution over unbounded heuristics
+- clear CLI output over hidden dashboards
+- local deployment over mandatory cloud dependencies
+- privacy by data minimization over privacy by policy alone
 
-These choices reflect the belief that the best anti-automation system is one that can be operated without becoming a surveillance platform.
+## Success Criteria
+
+ChronoSeal is succeeding when:
+
+- legitimate browser sessions advance without user friction
+- simple scrapers cannot pass the protocol
+- automation requires a full stateful implementation
+- operators can debug deployments with normal Unix tools
+- stored data remains minimal and short-lived
+- documentation reflects the implementation precisely

@@ -158,7 +158,7 @@ pub fn encode_environment(records: &[EnvironmentRecord]) -> Result<Vec<u8>, Gene
 }
 
 pub fn decode_environment(blob: &[u8]) -> Result<Vec<EnvironmentRecord>, GeneError> {
-    if blob.len() % 6 != 0 {
+    if !blob.len().is_multiple_of(6) {
         return Err(GeneError::EnvironmentBlobLengthInvalid { len: blob.len() });
     }
     let records_len = blob.len() / 6;

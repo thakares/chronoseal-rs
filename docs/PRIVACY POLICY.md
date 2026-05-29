@@ -1,66 +1,106 @@
 # ChronoSeal Privacy Policy
 
-ChronoSeal is a privacy-first cryptographic attestation system. It is intentionally designed to avoid long-term profiling, tracking, and persistent identity storage.
+ChronoSeal is a privacy-oriented browser attestation system. It is designed to validate short-lived session continuity without creating persistent user profiles.
 
-## What ChronoSeal Collects
+This document describes what ChronoSeal itself collects and stores. Applications that integrate ChronoSeal may collect additional data under their own policies.
 
-ChronoSeal only collects the minimum ephemeral data required to validate a live browser session:
+## Data ChronoSeal Processes
 
-* `session_id` — ephemeral session identifier
-* `prev_hash` / `initial_hash` — cryptographic chain state
-* `timestamp` — heartbeat timing information
-* `entropy_data` — recent mouse event samples for behavioral plausibility
-* `stack_state` — VM execution result for heartbeat uniqueness
-* `fingerprint` signals — basic browser sanity values such as aspect ratio, DPR, and hardware concurrency
-* `mutation_step` / `gene_commitment` — synthetic mutation parity values for protocol continuity
+ChronoSeal processes the minimum protocol data needed to validate a live browser session.
 
-## What ChronoSeal Does Not Store
+| Data | Purpose |
+|---|---|
+| `session_id` | Opaque session lookup key |
+| public key | Verify signed heartbeats for the session |
+| `salt` | Hash-chain progression |
+| `initial_hash` / `prev_hash` / `last_hash` | Replay-resistant continuity |
+| `timestamp` | Drift and liveness validation |
+| mouse event samples | Behavioral plausibility checks |
+| VM stack state | Input to hash-chain progression |
+| basic fingerprint fields | Sanity validation |
+| gene bytes and environment records | Mutation continuity |
+| pending mutation program and step | Next heartbeat verification |
+| expiration and last-seen timestamps | Session lifecycle and cleanup |
 
-ChronoSeal does not store or persist:
+Basic fingerprint fields currently include:
 
-* IP addresses as a core artifact
-* browser history
-* user identifiers
-* personal data
-* device fingerprint databases
-* long-term behavioral profiles
-* cross-session tracking records
+- aspect ratio
+- device pixel ratio
+- hardware concurrency
 
-If you need browser telemetry or user profiling, ChronoSeal is not the right tool.
+## Data ChronoSeal Does Not Intentionally Collect
 
-## Session Ephemerality
+ChronoSeal does not intentionally collect or build:
 
-By default, ChronoSeal uses `sqlite-in-memory` storage. Sessions are ephemeral and are expected to be recreated after process restarts.
+- browser history
+- page content history
+- account identity
+- email addresses
+- names
+- payment data
+- location history
+- cross-site tracking identifiers
+- persistent fingerprint databases
+- long-term behavioral profiles
 
-Persistent state is only stored when the operator explicitly configures `sqlite-disk` or `valkey`.
+ChronoSeal is not intended for analytics, advertising, or identity graph construction.
+
+## Session Lifetime
+
+Sessions are short-lived and expire according to `expiration_minutes`, which defaults to 30 minutes.
+
+Expired sessions are removed by cleanup behavior. In-memory storage is lost when the process exits.
+
+## Storage Modes and Persistence
+
+| Mode | Persistence |
+|---|---|
+| `sqlite-in-memory` | process lifetime only |
+| `sqlite-in-disk` | persisted to the configured SQLite file |
+| `valkey` | persisted according to the Valkey deployment configuration |
+
+Persistent state is operator-selected. The default backend is `sqlite-in-memory`.
 
 ## Client-Side Key Handling
 
-The Ed25519 signing keypair is generated inside the WASM runtime and is never serialized or transmitted in full.
+The browser WASM runtime generates an Ed25519 keypair for the session.
 
-* Private key: stays inside WASM linear memory
-* Public key: transmitted once during session initialization
+- The public key is sent to `/init`.
+- The private key is not sent to the server.
+- Heartbeat payloads are signed in the browser runtime.
 
-This design minimizes the amount of sensitive material exposed outside the browser runtime.
+This is a continuity mechanism, not a long-term identity mechanism.
 
-## Intentional Silent Rejection
+## Silent Rejection
 
-ChronoSeal intentionally returns a uniform `{"status":"ok"}` response for invalid heartbeats.
+ChronoSeal returns the same basic heartbeat status for accepted and rejected heartbeat requests:
 
-This is a privacy-preserving decision: it avoids emitting detailed rejection reasons that could be used to fingerprint or probe clients.
+```json
+{
+  "status": "ok"
+}
+```
 
-## Data Retention
+Accepted responses additionally include next-state fields. Rejected responses omit them.
 
-Session state is retained only as long as it is needed for heartbeat continuity.
+This reduces attacker feedback and avoids returning detailed failure classifications to clients.
 
-Expired sessions are purged automatically by cleanup tasks. Ephemeral backend modes do not write state to disk beyond the current process lifetime.
+## Logs
 
-## Transparency
+Operators control logging through `CHRONOSEAL_LOG`, `RUST_LOG`, and optional log-file configuration.
 
-The source code is open and the verification model is documented. Operators can inspect exactly what ChronoSeal stores and validates.
+Production deployments should avoid debug logging because internal session identifiers or validation context may appear in logs.
+
+## Operator Responsibilities
+
+Operators should:
+
+- serve traffic over HTTPS
+- protect SQLite, Valkey, and log storage
+- restrict access to metrics and stats endpoints
+- choose persistence mode deliberately
+- disclose any application-level data collection separately
 
 ## Summary
 
-ChronoSeal is designed to provide anti-automation defense without becoming a tracking or surveillance platform.
-
-It is a privacy-aware, ephemeral attestation layer with strong operational guardrails.
+ChronoSeal validates live session continuity using short-lived cryptographic and deterministic state. It is designed to raise automation cost without becoming a persistent tracking or profiling system.

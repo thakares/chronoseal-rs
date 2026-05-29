@@ -1,118 +1,191 @@
-# ChronoSeal v0.6.0 — Refactoring and System Upgrade
+# ChronoSeal v0.6.0 Refactoring and System Upgrade
 
-ChronoSeal v0.6.0 is a major architecture and protocol update that transforms the project from a lightweight heartbeat service into a mature Unix-native attestation daemon with deterministic mutation parity and pluggable storage backends.
+ChronoSeal v0.6.0 changed the project from a lightweight heartbeat prototype into a Unix-native attestation daemon with shared server/WASM protocol logic, deterministic mutation parity, operational CLI commands, and pluggable storage modes.
 
-## Summary of Changes
+This document summarizes the architectural changes introduced in the v0.6.0 line.
 
-* Introduced the **Synthetic Gene Mutation Engine** for deterministic mutation parity across server and WASM.
-* Added server-side validation of `mutation_step` and `gene_commitment`.
-* Centralized shared protocol logic in `shared/` for server/WASM parity.
-* Added support for multiple storage backend modes: `sqlite-in-memory`, `sqlite-disk`, and `valkey` compatibility.
-* Hardened runtime architecture with `systemd` readiness, graceful shutdown, PID file support, and structured logging.
-* Expanded CLI with rich subcommands and effective runtime configuration.
-* Preserved silent rejection semantics while improving anti-replay and liveness guarantees.
+## Summary
 
-## Why This Refactor?
+Major changes:
 
-The previous model relied on heartbeat continuity and behavioral entropy alone. v0.6.0 strengthens the protocol by adding a second, deterministic state progression channel:
+- introduced the Synthetic Gene Mutation Engine
+- added server-side validation of `mutation_step` and `gene_commitment`
+- moved protocol and deterministic mutation logic into `shared/`
+- added `chronoseal-wasm` browser runtime support for mutation preview and commit
+- expanded persisted session state with gene and pending mutation fields
+- added storage modes: `sqlite-in-memory`, `sqlite-in-disk`, and `valkey`
+- added health, metrics, stats, config, status, completion, and version CLI surfaces
+- added PID file handling, structured logging, and graceful shutdown behavior
+- preserved silent heartbeat rejection semantics
 
-* each heartbeat now includes a mutation step and commitment
-* the server authoritatively selects the next mutation program
-* the client must preview and commit the same state locally in WASM
-* the server rejects any mismatch silently
+## Motivation
 
-This raises the cost of developing a successful automation attack because the attacker must now maintain both a valid chain and a valid mutation progression state.
+The earlier model relied mainly on:
 
-## Core Architecture Changes
+- heartbeat timing
+- behavioral entropy
+- hash-chain continuity
+- signature verification
 
-### Shared Protocol Code
+v0.6.0 added a second deterministic state channel: a server-authored synthetic gene mutation sequence. This makes successful automation maintain both:
 
-`shared/` now contains:
+- the cryptographic hash/signature chain
+- the synthetic mutation state expected by the server
 
-* gene model and commitment hashing
-* mutation opcode semantics
-* request/response payload structures
-* canonical signing support
-* VM execution logic shared by server and WASM
+## Shared Crate Refactor
 
-Moving mutation semantics into `shared/` eliminates subtle server/client divergence bugs and enables deterministic cross-runtime testing.
+`shared/` now owns the parts of the protocol that must remain identical across server and browser runtime:
 
-### Mutation Handshake
+- request and response structs
+- hashing helpers
+- synthetic gene state
+- mutation environment encoding
+- mutation order generation and encoding
+- opcode execution semantics
+- protocol constants
 
-v0.6.0 adds the following data to the protocol:
+This reduces the risk of server/WASM drift.
 
-* `mutation_step`
-* `mutation_order_b64`
-* `gene_commitment`
-* `next_mutation_step`
-* `next_mutation_order_b64`
+## Mutation Handshake
 
-These fields are now part of the session initialization and heartbeat exchange.
+New protocol fields:
 
-### Server Session State
+- `gene_size`
+- `mutation_step`
+- `mutation_order_b64`
+- `gene_commitment`
+- `next_mutation_step`
+- `next_mutation_order_b64`
 
-The session schema now stores:
+Lifecycle:
 
-* committed gene bytes
-* committed environment records
-* pending mutation order
-* pending mutation step
+1. `/init` returns mutation step 1 and a server-authored mutation order.
+2. The browser previews the mutation in WASM.
+3. The browser signs and submits the resulting `gene_commitment`.
+4. The server applies the same pending mutation to its committed state.
+5. The server compares commitments.
+6. On success, server commits the candidate state and issues the next mutation.
+7. The browser commits its preview only after receiving the accepted response.
 
-The server advances this state only after a heartbeat is accepted.
+## Session Schema Changes
 
-### Deterministic WASM Preview
+The persisted session record now includes:
 
-The WASM runtime exposes:
+- committed gene bytes
+- encoded environment records
+- pending mutation program
+- pending mutation step
 
-* `init_gene_state()`
-* `preview_gene_commitment()`
-* `commit_gene_preview()`
-* `discard_gene_preview()`
-* `current_gene_commitment()`
+State advances only after a heartbeat is accepted. Rejected heartbeats do not rotate salt, update hash state, commit gene state, or consume the pending mutation.
 
-This makes the client-side mutation lifecycle explicit and deterministic.
+## WASM Runtime Changes
 
-### Backend Abstraction
+The WASM crate now supports:
 
-The server runtime now supports a configurable `db_type`.
+- `generate_keypair()`
+- `get_public_key()`
+- `sign_message()`
+- `compute_next_hash()`
+- `run_program()`
+- `init_gene_state()`
+- `preview_gene_commitment(order_b64, session_id, mutation_step, rounds)`
+- `commit_gene_preview()`
+- `discard_gene_preview()`
+- `current_gene_commitment(session_id, mutation_step)`
 
-* `sqlite-in-memory` — default runtime storage with ephemeral session semantics
-* `sqlite-disk` — persistent SQLite storage for stateful deployments
-* `valkey` — compatibility mode for alternative storage backends
+The generated package uses the `chronoseal_wasm` prefix.
 
-This abstraction makes ChronoSeal easier to operate in both stateless and stateful environments.
+## Storage Refactor
 
-### CLI and Service Integration
+The storage layer is abstracted behind `DbPool`.
 
-v0.6.0 improves the CLI surface with operational commands and service introspection.
+Supported modes:
 
-* `chronoseal run`
-* `chronoseal status`
-* `chronoseal health`
-* `chronoseal config`
-* `chronoseal metrics`
-* `chronoseal stats`
-* `chronoseal db-type`
-* `chronoseal completion`
-* `chronoseal version`
+| Mode | Behavior |
+|---|---|
+| `sqlite-in-memory` | default ephemeral in-process SQLite |
+| `sqlite-in-disk` | persisted SQLite database at `db_path` |
+| `valkey` | Valkey-compatible external store |
 
-The runtime now includes PID file handling and graceful termination.
+The storage interface supports insert, load, update, delete expired sessions, and stats.
 
-## Testing and Validation
+## CLI and Runtime Changes
 
-The refactor includes extensive tests for:
+The `chronoseal` binary now provides:
 
-* server/WASM parity across mutation sequences
-* malformed mutation payload rejection
-* replay attack rejection
-* mutation step mismatch rejection
-* stateful session update semantics
-* runtime database mode validation
+- `run`
+- `status`
+- `health`
+- `config check`
+- `generate keypair`
+- `version`
+- `db-type`
+- `metrics`
+- `stats`
+- `completion`
 
-The codebase now supports deterministic table-driven tests and fuzz-style random program validation.
+The daemon exposes:
+
+- `POST /init`
+- `POST /hb`
+- `GET /health`
+- `GET /metrics`
+- `GET /stats`
+- static frontend serving at `/`
+
+## Validation Improvements
+
+The heartbeat verifier now checks:
+
+- session presence
+- expiration
+- signature
+- hash-chain continuity
+- mutation step
+- mutation commitment parity
+- timestamp drift
+- behavioral mouse checks
+- fingerprint ranges
+- rate limiting at the route layer
+
+Accepted heartbeats return next-state fields. Rejected heartbeats return only `{"status":"ok"}`.
+
+## Testing Impact
+
+The refactor added or strengthened tests for:
+
+- gene environment encoding and validation
+- mutation opcode behavior
+- mutation order round-trips
+- deterministic mutation generation with seeded RNG
+- server/client mutation parity
+- random program divergence resistance
+- replay rejection
+- mutation step mismatch rejection
+- mutation commitment tamper rejection
+- storage backend stats
+- route-level silent rejection behavior
 
 ## Operational Impact
 
-This release makes ChronoSeal suitable for production deployment in Linux environments and for integration into existing web application stacks.
+v0.6.0 makes ChronoSeal more suitable for deployment as a real service:
 
-The combination of deterministic mutation parity and shared protocol implementation improves both security and maintainability.
+- explicit daemon lifecycle
+- CLI-first operations
+- systemd-oriented install path
+- health and metrics endpoints
+- configurable persistence
+- shared protocol implementation
+- clearer docs and threat model
+
+## Compatibility Notes
+
+Important names in the current implementation:
+
+- binary: `chronoseal`
+- server crate: `chronoseal-server`
+- WASM crate: `chronoseal-wasm`
+- generated WASM module prefix: `chronoseal_wasm`
+- persistent SQLite mode: `sqlite-in-disk`
+
+Older docs or integrations may refer to `sqlite-disk`, `server`, or `antibot_wasm`; those names are stale for the current codebase.

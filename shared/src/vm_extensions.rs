@@ -1,7 +1,7 @@
 use crate::{
     constants::{
-        HASH_OPCODE_INSTRUCTION_COST, MAX_GENE_SIZE, MAX_MUTATION_PROGRAM_BYTES,
-        MAX_MUTATION_INSTRUCTION_BUDGET, DEFAULT_MUTATION_ROUNDS, SOFT_CAP_DURATION_MS,
+        DEFAULT_MUTATION_ROUNDS, HASH_OPCODE_INSTRUCTION_COST, MAX_GENE_SIZE,
+        MAX_MUTATION_INSTRUCTION_BUDGET, MAX_MUTATION_PROGRAM_BYTES, SOFT_CAP_DURATION_MS,
     },
     gene::{
         add_env_quantity, get_env_quantity, sub_env_quantity, validate_state, GeneError, GeneState,
@@ -153,9 +153,7 @@ pub fn generate_order_with_rng<R: Rng + ?Sized>(
             OP_FINALIZE_GENE_HASH => {
                 program.push(OP_FINALIZE_GENE_HASH);
                 stack_depth += 1;
-                if hash_ops_needed > 0 {
-                    hash_ops_needed -= 1;
-                }
+                hash_ops_needed = hash_ops_needed.saturating_sub(1);
             }
             OP_GENE_STORE => {
                 if stack_depth > 0 {
@@ -199,17 +197,15 @@ pub fn generate_order_with_rng<R: Rng + ?Sized>(
                     push_u16(&mut program, rng.r#gen::<u16>());
                 }
             }
-            OP_PRODUCE => {
-                if stack_depth > 0 {
-                    program.push(OP_PRODUCE);
-                    push_u16(&mut program, rng.r#gen::<u16>());
-                }
+            OP_PRODUCE if stack_depth > 0 => {
+                program.push(OP_PRODUCE);
+                push_u16(&mut program, rng.r#gen::<u16>());
             }
             _ => {}
         }
     }
 
-    while hash_ops_needed > 0 && program.len() + 1 <= MAX_MUTATION_PROGRAM_BYTES {
+    while hash_ops_needed > 0 && program.len() < MAX_MUTATION_PROGRAM_BYTES {
         program.push(OP_FINALIZE_GENE_HASH);
         hash_ops_needed -= 1;
     }
@@ -269,12 +265,25 @@ pub fn execute_program_with_rounds(
     }
 
     let elapsed = start.elapsed();
-    tracing::debug!(rounds = actual_rounds, requested_rounds = rounds, elapsed_ms = elapsed.as_millis(), program_len = program.len(), "mutation execution");
+    tracing::debug!(
+        rounds = actual_rounds,
+        requested_rounds = rounds,
+        elapsed_ms = elapsed.as_millis(),
+        program_len = program.len(),
+        "mutation execution"
+    );
     if actual_rounds < rounds {
-        tracing::debug!(requested_rounds = rounds, executed_rounds = actual_rounds, "mutation soft cap reduced mutation rounds to preserve host responsiveness");
+        tracing::debug!(
+            requested_rounds = rounds,
+            executed_rounds = actual_rounds,
+            "mutation soft cap reduced mutation rounds to preserve host responsiveness"
+        );
     }
     if elapsed.as_millis() > SOFT_CAP_DURATION_MS {
-        tracing::debug!(elapsed_ms = elapsed.as_millis(), "mutation execution exceeded soft cap duration");
+        tracing::debug!(
+            elapsed_ms = elapsed.as_millis(),
+            "mutation execution exceeded soft cap duration"
+        );
     }
 
     Ok(trace.unwrap_or_else(|| ExecutionTrace {

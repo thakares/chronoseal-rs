@@ -52,14 +52,17 @@ impl DbPool {
                 Ok(DbPool::Sqlite(pool))
             }
             crate::config::DbType::Valkey => {
-                let addr = std::env::var("CHRONOSEAL_VALKEY_ADDR").unwrap_or_else(|_| "127.0.0.1:6666".to_string());
+                let addr = std::env::var("CHRONOSEAL_VALKEY_ADDR")
+                    .unwrap_or_else(|_| "127.0.0.1:6666".to_string());
                 match ValkeyClient::connect(addr) {
                     Ok(client) => Ok(DbPool::Valkey(ValkeyStore {
                         client: Arc::new(Mutex::new(client)),
                         index_key: "sessions:ids".to_string(),
                     })),
                     Err(err) => {
-                        tracing::warn!("valkey connection failed, falling back to sqlite-in-memory: {err}");
+                        tracing::warn!(
+                            "valkey connection failed, falling back to sqlite-in-memory: {err}"
+                        );
                         let pool = init_sqlite_pool(Path::new(":memory:"))?;
                         Ok(DbPool::Sqlite(pool))
                     }
@@ -99,7 +102,10 @@ impl DbPool {
         }
     }
 
-    pub fn load_session(&self, session_id: &str) -> Result<Option<SessionRecord>, Box<dyn std::error::Error>> {
+    pub fn load_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<SessionRecord>, Box<dyn std::error::Error>> {
         match self {
             DbPool::Sqlite(pool) => {
                 let conn = pool.get()?;
@@ -191,7 +197,8 @@ impl DbPool {
             DbPool::Sqlite(pool) => {
                 let conn = pool.get()?;
                 let now = current_time_ms();
-                let sessions = conn.query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))?;
+                let sessions =
+                    conn.query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))?;
                 let expired_sessions = conn.query_row(
                     "SELECT COUNT(*) FROM sessions WHERE expires_at < ?1",
                     [now],
@@ -219,7 +226,9 @@ pub fn init_pool(path: &Path) -> Result<DbPool, Box<dyn std::error::Error>> {
     Ok(DbPool::Sqlite(pool))
 }
 
-fn init_sqlite_pool(path: &Path) -> Result<r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>, Box<dyn std::error::Error>> {
+fn init_sqlite_pool(
+    path: &Path,
+) -> Result<r2d2::Pool<r2d2_sqlite::SqliteConnectionManager>, Box<dyn std::error::Error>> {
     let manager = if path == Path::new(":memory:") {
         r2d2_sqlite::SqliteConnectionManager::memory()
     } else {
@@ -300,7 +309,10 @@ impl ValkeyStore {
         format!("session:{}", session_id)
     }
 
-    fn load_session(&self, session_id: &str) -> Result<Option<SessionRecord>, Box<dyn std::error::Error>> {
+    fn load_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Option<SessionRecord>, Box<dyn std::error::Error>> {
         let mut client = self.client.lock().unwrap();
         if let Some(payload) = client.get(&self.session_key(session_id))? {
             let record = serde_json::from_str(&payload)?;

@@ -18,7 +18,12 @@ pub fn init_gene_state(gene_size: u32) -> bool {
 }
 
 #[wasm_bindgen]
-pub fn preview_gene_commitment(order_b64: &str, session_id: &str, mutation_step: u64, rounds: u8) -> String {
+pub fn preview_gene_commitment(
+    order_b64: &str,
+    session_id: &str,
+    mutation_step: u64,
+    rounds: u8,
+) -> String {
     let order = match shared::vm_extensions::decode_order_b64(mutation_step, order_b64) {
         Ok(order) => order,
         Err(_) => return String::new(),
@@ -27,10 +32,17 @@ pub fn preview_gene_commitment(order_b64: &str, session_id: &str, mutation_step:
     let start = Instant::now();
     let candidate = GENE_STATE.with(|slot| {
         let state = slot.borrow();
-        let Some(current) = state.as_ref() else {
-            return None;
-        };
-        shared::vm_extensions::apply_program_clone_with_rounds(current, &order.program, if rounds == 0 { shared::constants::DEFAULT_MUTATION_ROUNDS } else { rounds }).ok()
+        let current = state.as_ref()?;
+        shared::vm_extensions::apply_program_clone_with_rounds(
+            current,
+            &order.program,
+            if rounds == 0 {
+                shared::constants::DEFAULT_MUTATION_ROUNDS
+            } else {
+                rounds
+            },
+        )
+        .ok()
     });
     let elapsed = start.elapsed();
     tracing::debug!(session_id = %session_id, mutation_step = mutation_step, elapsed_ms = elapsed.as_millis(), "wasm mutation preview execution");
@@ -38,7 +50,8 @@ pub fn preview_gene_commitment(order_b64: &str, session_id: &str, mutation_step:
     let Some(candidate) = candidate else {
         return String::new();
     };
-    let commitment = shared::gene::commitment_hex_with_context(&candidate, session_id, mutation_step);
+    let commitment =
+        shared::gene::commitment_hex_with_context(&candidate, session_id, mutation_step);
     PREVIEW_STATE.with(|slot| *slot.borrow_mut() = Some(candidate));
     commitment
 }
@@ -63,7 +76,9 @@ pub fn current_gene_commitment(session_id: &str, mutation_step: u64) -> String {
     GENE_STATE.with(|slot| {
         slot.borrow()
             .as_ref()
-            .map(|state| shared::gene::commitment_hex_with_context(state, session_id, mutation_step))
+            .map(|state| {
+                shared::gene::commitment_hex_with_context(state, session_id, mutation_step)
+            })
             .unwrap_or_default()
     })
 }
@@ -95,12 +110,7 @@ mod tests {
         discard_gene_preview();
         GENE_STATE.with(|slot| *slot.borrow_mut() = None);
         let c = preview_gene_commitment(
-            &order_b64(vec![
-                shared::vm_extensions::OP_MUTATE_POINT,
-                0,
-                0,
-                1,
-            ]),
+            &order_b64(vec![shared::vm_extensions::OP_MUTATE_POINT, 0, 0, 1]),
             "deadbeef",
             1,
             0,
@@ -173,8 +183,16 @@ mod tests {
         let preview = preview_gene_commitment(&b64, "deadbeef", 3, 0);
 
         let mut expected = shared::gene::new_state(16).unwrap();
-        shared::vm_extensions::apply_program_with_rounds(&mut expected, &order.program, shared::constants::DEFAULT_MUTATION_ROUNDS).unwrap();
-        assert_eq!(preview, shared::gene::commitment_hex_with_context(&expected, "deadbeef", 3));
+        shared::vm_extensions::apply_program_with_rounds(
+            &mut expected,
+            &order.program,
+            shared::constants::DEFAULT_MUTATION_ROUNDS,
+        )
+        .unwrap();
+        assert_eq!(
+            preview,
+            shared::gene::commitment_hex_with_context(&expected, "deadbeef", 3)
+        );
     }
 
     #[test]
@@ -194,11 +212,15 @@ mod tests {
                 shared::constants::DEFAULT_MUTATION_ROUNDS,
             )
             .unwrap();
-            let expected_commitment = shared::gene::commitment_hex_with_context(&expected, "deadbeef", step + 1);
+            let expected_commitment =
+                shared::gene::commitment_hex_with_context(&expected, "deadbeef", step + 1);
 
             assert_eq!(preview, expected_commitment);
             assert!(commit_gene_preview());
-            assert_eq!(current_gene_commitment("deadbeef", step + 1), expected_commitment);
+            assert_eq!(
+                current_gene_commitment("deadbeef", step + 1),
+                expected_commitment
+            );
         }
     }
 }
