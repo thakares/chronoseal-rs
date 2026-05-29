@@ -1,526 +1,533 @@
-# ChronoSeal — Architecture
+# ChronoSeal Architecture
 
-> Note (v0.6.0): Synthetic Gene Mutation flow and mutation handshake updates are documented in [REFRACTORING-v0.6.0.md](https://github.com/thakares/chronoseal-rs/blob/main/docs/REFRACTORING-v0.6.0.md) and [API.md](https://github.com/thakares/chronoseal-rs/blob/main/docs/API.md).
+ChronoSeal is a Unix-native browser attestation daemon. It validates browser session continuity by combining signed heartbeats, Blake3 hash-chain progression, deterministic VM execution, behavioral sanity checks, and a shared Synthetic Gene Mutation Engine that runs on both the server and the browser WASM runtime.
 
-## Overview
+This document describes the system architecture, state model, validation pipeline, trust boundaries, and operational assumptions. The API wire format is documented separately in [API.md](API.md), and deployment guidance is documented in [DEPLOYMENT.md](DEPLOYMENT.md).
 
-ChronoSeal is a stateless, cryptographic browser attestation framework. Its
-purpose is to make automated clients (headless browsers, AI scrapers, API
-harvesters) computationally expensive and operationally complex to operate,
-while remaining completely invisible to real human users.
+## Architectural Goals
 
-The design is inspired by the heartbeat model used in embedded IoT firmware:
-a device that stops sending signed, chained attestations is assumed to be
-offline or compromised. ChronoSeal applies the same principle to browser
-sessions.
+ChronoSeal is designed as infrastructure software rather than a consumer-facing widget. The main goals are:
 
----
+- Keep the server small, inspectable, and operable as a normal Unix daemon.
+- Use deterministic client/server computation so the server can verify browser-side progression without trusting browser claims blindly.
+- Make replay, stale state reuse, and incomplete automation expensive.
+- Preserve privacy by using short-lived session state instead of persistent identity tracking.
+- Avoid attacker feedback oracles by returning indistinguishable success-shaped responses for rejected heartbeats.
+- Keep browser integration lightweight: static JavaScript plus a Rust-generated WASM package.
 
-## Design Principles
+ChronoSeal does not attempt to prove that a human is present. It attempts to prove that a client is maintaining the expected live browser-side cryptographic and mutation state.
 
-**Stateless per request.** The server carries no per-request state beyond what
-is stored in SQLite keyed on `session_id`. Every HTTP request is independently
-verifiable.
+## System Context
 
-**Silent failure.** Validation failures never return an error status or an
-error body. The server always responds `{"status":"ok"}` and simply omits `next_salt`. The client degrades gracefully. Attackers cannot enumerate
-validation rules by probing error responses.
-
-**Private key isolation.** The Ed25519 signing key is generated inside the
-WASM module and never serialised, never exposed to the JavaScript environment,
-and never transmitted. It exists only in WASM linear memory for the lifetime
-of the page.
-
-**Layered validation.** A heartbeat must pass five independent checks: session
-existence, expiry, signature, hash chain, and behavioral signals. Bypassing
-one layer is not sufficient.
-
-**Cost asymmetry.** Each heartbeat requires a real browser environment, mouse
-activity, correct WASM execution, chain state synchronisation, and a valid
-Ed25519 signature over a time-windowed payload. For an automated client, the
-synchronisation burden alone makes scaled operation expensive.
-
-**Deterministic mutation parity (v0.6.0).** Each heartbeat additionally carries
-a `mutation_step` and `gene_commitment` derived from a server-issued mutation
-program. Server and WASM execute the same shared opcode engine
-(`shared/src/vm_extensions.rs`), and the server rejects any heartbeat where
-the recomputed commitment does not match the client-supplied value.
-
-### High-Level Design
-
-- **Core**: Rust + Axum (async web framework)
-- **Storage**: `db_type` selectable (`sqlite-in-memory`, `sqlite-in-disk`, `valkey` compatibility mode)
-- **Client**: WASM + Rust (runs in browser for proof generation)
-- **Security Model**: Behavioral analysis + hash chaining + entropy scoring + deterministic gene mutation parity
-- **Deployment**: Static musl binary, systemd service, optional Docker
-
-### Key Components
-
-- `shared/` — Types, constants, crypto primitives, gene model, and mutation engine used by server and WASM
-- `server/` — Axum routes, session management, trust engine, rate limiting, cleanup tasks
-- `wasm/` — Client-side proof generation, mutation preview/commit lifecycle
-- `frontend/` — Static assets served by the application
-
-### Unix-Native Design Decisions
-
-- Runs as a proper systemd service with strict sandboxing
-- All state is either in-memory or in standard locations (`/run/`, `/var/log/`, `/etc/`)
-- Graceful shutdown and reload support via signals
-- Logging designed for `journalctl` and structured parsing
-- Configuration is fully runtime (no recompile needed)
-
-### Design Goal
-
-## ChronoSeal should feel as natural to use as `nginx` or `redis-server` on a Linux system.
-
-## Component Map
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  Browser                                                │
-│                                                         │
-│  ┌─────────────┐   ┌──────────────┐   ┌─────────────┐   │
-│  │  entropy.js │   │ heartbeat.js │   │ transport.js│   │
-│  │             │   │              │   │             │   │
-│  │ mousemove   │──►│ orchestrates │──►│ fetch POST  │   │
-│  │ event ring  │   │ init + HB    │   │ /init  /hb  │   │
-│  └─────────────┘   └──────┬───────┘   └─────────────┘   │
-│                           │                             │
-│                    ┌──────▼───────────────────────┐     │
-│                    │  WASM Module (antibot_wasm)  │     │
-│                    │                              │     │
-│                    │  crypto.rs      vm.rs        │     │
-│                    │  ├ generate_keypair()        │     │
-│                    │  ├ sign_message()            │     │
-│                    │  ├ compute_next_hash()       │     │
-│                    │  ├ run_program()             │     │
-│                    │  vm_extensions.rs            │     │
-│                    │  ├ preview_mutation()        │     │
-│                    │  └ commit_mutation()         │     │
-│                    └──────────────────────────────┘     │
-└─────────────────────────────────────────────────────────┘
-                          │ HTTPS
-┌─────────────────────────▼───────────────────────────────┐
-│  Server (Axum)                                          │
-│                                                         │
-│  routes/init.rs          routes/heartbeat.rs            │
-│       │                          │                      │
-│       └──────────┬───────────────┘                      │
-│                  ▼                                      │
-│            session.rs                                   │
-│            ├ create_session()                           │
-│            └ verify_heartbeat()                         │
-│            └ validate_mutation_parity()  [v0.6.0]       │
-│                  │                                      │
-│       ┌──────────┼──────────────┐                       │
-│       ▼          ▼              ▼                       │
-│  crypto.rs   trust.rs    fingerprint.rs                 │
-│  (sig verify) (mouse     (aspect ratio,                 │
-│               speed)      DPR, HW conc.)                │
-│       │                                                 │
-│       ▼                                                 │
-│  shared::hashing  (Blake3 hash chain)                   │
-│  shared::gene     (gene model + commitment) [v0.6.0]    │
-│  shared::vm_extensions (mutation opcodes)  [v0.6.0]    │
-│       │                                                 │
-│       ▼                                                 │
-│  storage.rs  (SQLite: in-memory / in-disk / valkey)     │
-│                                                         │
-│  ratelimit.rs   cleanup.rs   vm.rs   middleware.rs      │
-└─────────────────────────────────────────────────────────┘
+```text
+Protected browser origin
+        |
+        | static files and API calls
+        v
++------------------------------+
+| Browser                      |
+| - frontend JavaScript        |
+| - chronoseal_wasm runtime    |
+| - Ed25519 session key        |
+| - VM and gene state          |
++---------------+--------------+
+                |
+                | POST /init
+                | POST /hb
+                v
++------------------------------+
+| ChronoSeal daemon            |
+| - Axum HTTP routes           |
+| - session verifier           |
+| - storage abstraction        |
+| - metrics and health         |
++---------------+--------------+
+                |
+                | SessionRecord
+                v
++------------------------------+
+| Storage backend              |
+| - sqlite-in-memory           |
+| - sqlite-in-disk             |
+| - valkey                     |
++------------------------------+
 ```
 
----
+ChronoSeal can serve the frontend files itself or sit behind a reverse proxy. TLS termination should happen before traffic reaches the daemon in production.
 
-## Session Lifecycle
+## Workspace Components
 
-### 1. Initialisation — `POST /init`
+The repository is a Rust workspace with three runtime crates and one static frontend directory.
 
+### `shared/`
+
+`shared/` contains protocol and deterministic runtime code used by both the server and WASM crates.
+
+Responsibilities:
+
+- wire protocol structs for `/init` and `/hb`
+- Blake3 hash-chain helpers
+- synthetic gene state representation
+- environment encoding and validation
+- mutation program generation, encoding, decoding, and execution
+- deterministic VM extension opcode semantics
+
+Important files:
+
+| File | Responsibility |
+|---|---|
+| `protocol.rs` | `InitRequest`, `InitResponse`, `HeartbeatRequest`, `HeartbeatResponse`, and supporting payload types |
+| `hashing.rs` | initial and next hash-chain computation |
+| `gene.rs` | gene state, environment records, validation, and context-bound commitment |
+| `vm_extensions.rs` | mutation order generation, opcode interpreter, execution tracing, and tests |
+| `constants.rs` | protocol and execution bounds |
+
+`shared/` is the determinism boundary. Any logic that must agree between server and browser belongs here rather than in server-only or frontend-only code.
+
+### `server/`
+
+`server/` builds the `chronoseal` binary. It owns daemon lifecycle, HTTP routing, session verification, storage, metrics, configuration, and CLI behavior.
+
+Important files:
+
+| File | Responsibility |
+|---|---|
+| `main.rs` | CLI command dispatch |
+| `cli.rs` | command, flag, and environment variable definitions |
+| `config.rs` | defaults, TOML loading, environment overrides, validation |
+| `runtime.rs` | daemon startup, Axum router, health, metrics, stats, graceful shutdown |
+| `routes/init.rs` | `POST /init` handler |
+| `routes/heartbeat.rs` | `POST /hb` handler and silent rejection response shape |
+| `session.rs` | session creation, heartbeat verification, state advancement |
+| `crypto.rs` | canonical signing payload and Ed25519 signature verification |
+| `storage.rs` | `DbPool`, SQLite, Valkey compatibility, session persistence, stats |
+| `trust.rs` | mouse entropy validation |
+| `fingerprint.rs` | browser signal validation |
+| `ratelimit.rs` | per-session rate limiting |
+| `cleanup.rs` | expired session removal |
+
+The server treats the browser as untrusted. Browser-supplied values are accepted only after signature, continuity, timing, behavioral, and mutation checks pass.
+
+### `wasm/`
+
+`wasm/` compiles to the browser runtime package with `wasm-pack --target web`.
+
+Responsibilities:
+
+- generate and hold the browser-local Ed25519 keypair
+- sign canonical heartbeat payloads
+- compute hash-chain values used by the browser integration
+- execute randomized VM programs
+- maintain committed and preview synthetic gene state
+- preview mutation commitments before a heartbeat is submitted
+- commit or discard preview state after server response
+
+Important files:
+
+| File | Responsibility |
+|---|---|
+| `crypto.rs` | key generation, public key export, message signing |
+| `vm.rs` | base VM program execution |
+| `vm_extensions.rs` | gene initialization, mutation preview, commit, discard, current commitment |
+
+The WASM runtime is not a trusted execution environment. It is useful because it forces a browser client to implement the same state transitions as the server and makes simple HTTP automation insufficient.
+
+### `frontend/`
+
+`frontend/` contains static JavaScript and browser assets. It loads `frontend/pkg/chronoseal_wasm.js`, calls `/init`, periodically sends `/hb`, and coordinates browser-side state transitions.
+
+The frontend is intentionally thin. Durable protocol rules live in Rust, not in handwritten JavaScript.
+
+## Runtime Topology
+
+The daemon builds a single Axum application with:
+
+| Route | Method | Purpose |
+|---|---|---|
+| `/init` | `POST` | create a new attestation session |
+| `/hb` | `POST` | verify and advance a heartbeat |
+| `/health` | `GET` | health probe |
+| `/metrics` | `GET` | Prometheus-compatible metrics |
+| `/stats` | `GET` | storage/session statistics |
+| `/` | `GET` | static frontend assets from `frontend_dir` |
+
+Shared runtime state is held in `AppState`:
+
+- `db_pool`: storage backend handle
+- `rate_limiter`: process-local rate limiter
+- `config`: runtime configuration snapshot behind an `RwLock`
+
+Configuration is resolved in this order:
+
+1. CLI flags
+2. `CHRONOSEAL_*` environment variables
+3. TOML configuration file
+4. built-in defaults
+
+## Session State Model
+
+The server persists one `SessionRecord` per active session.
+
+| Field | Meaning |
+|---|---|
+| `session_id` | random 32-byte session identifier encoded as hex |
+| `public_key` | browser-generated Ed25519 verifying key |
+| `salt` | current server salt for hash-chain progression |
+| `last_hash` | current accepted hash-chain head |
+| `chain_length` | number of accepted chain states including initialization |
+| `created_at` | creation timestamp in milliseconds |
+| `last_seen` | timestamp of last accepted heartbeat |
+| `expires_at` | session expiration timestamp in milliseconds |
+| `gene` | committed synthetic gene byte buffer |
+| `environment` | encoded environment records |
+| `pending_mutation` | server-issued mutation program for the next heartbeat |
+| `pending_mutation_step` | mutation step expected on the next heartbeat |
+
+The committed server state advances only after a heartbeat passes all validation checks. Failed heartbeats do not update `last_hash`, `salt`, `gene`, `environment`, `pending_mutation`, or `pending_mutation_step`.
+
+## Initialization Flow
+
+```text
+Browser/WASM                         Server
+------------                         ------
+generate_keypair()
+public key
+      |
+      | POST /init { public_key }
+      v
+                                  validate public key length
+                                  create GeneState
+                                  generate session_id
+                                  generate salt
+                                  compute initial_hash
+                                  generate VM opcodes
+                                  generate mutation step 1
+                                  persist SessionRecord
+      ^
+      | InitResponse
+      |
+store session_id, salt,
+initial_hash, opcodes,
+gene_size, mutation order
 ```
-Client                                  Server
-  │                                        │
-  │  generate Ed25519 keypair (in WASM)    │
-  │  pub_key = verifying_key.to_bytes()    │
-  │                                        │
-  ├─── { public_key: hex(pub_key) } ──────►│
-  │                                        │  session_id = rand::random::<[u8;32]>()
-  │                                        │  salt₀      = rand::random::<[u8;16]>()
-  │                                        │  H(0) = Blake3(session_id║pub_key║salt₀)
-  │                                        │  opcodes = generate_random_program(8..=16)
-  │                                        │  gene    = initial gene buffer            [v0.6.0]
-  │                                        │  mutation_order = generate_mutation_program() [v0.6.0]
-  │                                        │  INSERT INTO sessions …
-  │                                        │
-  │◄── { session_id, salt, opcodes_b64,    │
-  │      initial_hash, expires_at,         │
-  │      mutation_step,                    │  [v0.6.0]
-  │      mutation_order_b64 } ─────────────┤  [v0.6.0]
-  │                                        │
-  │  prevHash         = initial_hash       │
-  │  currentSalt      = salt               │
-  │  opcodesB64       = opcodes_b64        │
-  │  mutationStep     = mutation_step      │  [v0.6.0]
-  │  mutationOrderB64 = mutation_order_b64 │  [v0.6.0]
+
+Initialization creates the first server-side commitment state but does not prove liveness. Liveness begins with accepted heartbeats.
+
+The initial response contains:
+
+- `session_id`
+- `salt`
+- `opcodes_b64`
+- `initial_hash`
+- `expires_at`
+- heartbeat interval bounds
+- `gene_size`
+- `mutation_step`
+- `mutation_order_b64`
+
+## Heartbeat Flow
+
+```text
+Browser/WASM                                      Server
+------------                                      ------
+execute VM program
+collect entropy and fingerprint data
+preview pending gene mutation
+build canonical signing payload
+sign with Ed25519 private key
+      |
+      | POST /hb HeartbeatRequest
+      v
+                                                 load session
+                                                 check expiration
+                                                 verify signature
+                                                 check hash continuity
+                                                 check mutation step
+                                                 apply pending mutation
+                                                 compare gene commitment
+                                                 check timestamp drift
+                                                 validate mouse entropy
+                                                 validate fingerprint
+                                                 compute next hash
+                                                 generate next mutation
+                                                 generate next salt
+                                                 persist advanced state
+      ^
+      | accepted: status + next salt + next mutation
+      | rejected: { "status": "ok" }
+      |
+commit preview on accepted response
+discard or stop on rejected response
 ```
 
-### 2. Heartbeat — `POST /hb`
+Accepted heartbeats return `next_salt`, `next_mutation_step`, and `next_mutation_order_b64`.
 
-Fired every 12–25 seconds with uniform random jitter.
+Rejected heartbeats return only:
 
-```
-Client                                  Server
-  │                                        │
-  │  stackState  = run_program(opcodesB64) │
-  │  commitment  = preview_mutation(       │  [v0.6.0]
-  │    mutationOrderB64, mutationStep)     │
-  │  events      = collectEntropy(lastTime)│
-  │  ts          = Date.now()              │
-  │                                        │
-  │  signable = {                          │
-  │    entropyData, fingerprint,           │  ← keys sorted alphabetically
-  │    prevHash, sessionId,                │
-  │    stackState, timestamp,              │
-  │    mutation_step, gene_commitment      │  [v0.6.0]
-  │  }                                     │
-  │  sig = sign_message(                   │
-  │    JSON.stringify(signable, keys.sort))│
-  │                                        │
-  ├─── { session_id, prev_hash, timestamp, │
-  │      entropy_data, stack_state,        │
-  │      fingerprint, signature,           │
-  │      mutation_step, gene_commitment }─►│  [v0.6.0]
-  │                                        │  1. Rate limit check
-  │                                        │  2. Lookup session, check expiry
-  │                                        │  3. Verify Ed25519 signature
-  │                                        │  4. Verify hash chain continuity
-  │                                        │  5. Validate timestamp window ±30s
-  │                                        │  6. Validate mouse behavior
-  │                                        │  7. Validate fingerprint signals
-  │                                        │  8. Validate mutation step parity  [v0.6.0]
-  │                                        │  9. Validate gene commitment       [v0.6.0]
-  │                                        │ 10. Compute H(n), rotate salt
-  │                                        │ 11. Advance gene state             [v0.6.0]
-  │                                        │ 12. UPDATE sessions …
-  │                                        │
-  │◄── { status: "ok", next_salt,          │
-  │      next_mutation_step,               │  [v0.6.0]
-  │      next_mutation_order_b64 } ────────┤  [v0.6.0]
-  │                                        │
-  │  sentSalt         = currentSalt  ◄── captured BEFORE rotation
-  │  currentSalt      = next_salt          │
-  │  mutationStep     = next_mutation_step │  [v0.6.0]
-  │  mutationOrderB64 = next_mutation_order_b64 [v0.6.0]
-  │  prevHash         = compute_next_hash( │
-  │    prevHash, ts, entropy,              │
-  │    stackState, sentSalt)               │
-```
-
-### 3. Failure Path
-
-On any validation failure the server returns `{"status":"ok"}` with no `next_salt`. The client logs a warning and continues scheduling heartbeats.
-The chain is broken — subsequent heartbeats will also fail silently.
-No error is surfaced to the page or its visitors.
-
----
-
-## Cryptographic Protocol
-
-### Key Generation
-
-```
-Ed25519 keypair generated via ed25519-dalek + rand::thread_rng (OS-seeded)
-Private key:  stored in WASM thread_local, never leaves WASM memory
-Public key:   32 bytes, hex-encoded, sent to server at init
-```
-
-### Hash Chain
-
-```
-H(0) = Blake3( session_id ║ pub_key ║ salt₀ )
-
-H(n) = Blake3(
-    saltₙ₋₁                    ← server-side only, rotated each heartbeat
-  ║ H(n-1)                     ← must match stored last_hash
-  ║ timestamp_u64_le
-  ║ Blake3( JSON(entropy_data) )
-  ║ Blake3( JSON(stack_state)  )
-)
-```
-
-Salt rotation means an attacker who intercepts a heartbeat cannot compute
-future chain links without also intercepting every subsequent server response.
-
-### Gene Commitment (v0.6.0)
-
-A domain-separated BLAKE3 commitment binds both the gene buffer and the sorted
-environment records into a single 32-byte value that is included in the signed
-heartbeat payload and validated server-side:
-
-```
-gene_commitment = BLAKE3(
-    "chronoseal/gene/v1"       ← domain separator
-  ║ gene_bytes                 ← Vec<u8> gene buffer
-  ║ for each (symbol, qty) sorted by symbol:
-      symbol_u16_le ║ qty_u32_le
-)
-```
-
-The server recomputes the candidate gene state from its authoritative
-`pending_mutation` program and rejects any heartbeat where
-`recomputed_commitment != client_gene_commitment`.
-
-### Canonical Signing Payload
-
-The signed message is a JSON object with top-level keys sorted alphabetically,
-serialised with no extra whitespace:
-
-```
+```json
 {
-  "entropyData":     { "events": [{"t":…,"x":…,"y":…}] },
-  "fingerprint":     { "aspectRatio":"…","devicePixelRatio":"…","hardwareConcurrency":… },
-  "gene_commitment": "hex…",
-  "mutation_step":   N,
-  "prevHash":        "hex…",
-  "sessionId":       "hex…",
-  "stackState":      { "ip":…,"stack":[…] },
-  "timestamp":       1234567890123
+  "status": "ok"
 }
 ```
 
-The server reconstructs this using `std::collections::BTreeMap` (alphabetical
-key order) before calling `VerifyingKey::verify_strict`. Any field mismatch,
-key order difference, or whitespace difference causes a signature failure.
+This silent rejection behavior is part of the security model. It prevents the API from acting as an oracle for signature, timing, mutation, or behavior failures.
 
-### Hashing Algorithm
+## Verification Pipeline
 
-Blake3 is used throughout: hash chain links, entropy data digest, stack state
-digest, gene commitment, and the VM HASH opcode. Blake3 is chosen for speed
-in WASM, resistance to length-extension attacks, and a clean Rust API.
+Heartbeat verification occurs in `server/src/session.rs`.
 
----
+The current validation order is:
 
-## Stack Machine
+1. Load the session by `session_id`.
+2. Reject if the session is missing.
+3. Reject if `now > expires_at`.
+4. Verify the Ed25519 signature over the canonical payload.
+5. Decode and compare `prev_hash` with the stored `last_hash`.
+6. Compare request `mutation_step` with stored `pending_mutation_step`.
+7. Decode the stored gene environment.
+8. Apply the stored `pending_mutation` to a cloned server gene state.
+9. Compute the expected `gene_commitment` with session and step context.
+10. Compare the request `gene_commitment` with the expected commitment.
+11. Enforce timestamp drift bounds.
+12. Validate mouse entropy.
+13. Validate browser fingerprint fields.
+14. Compute the next hash-chain value.
+15. Generate the next mutation order.
+16. Generate the next salt.
+17. Persist the advanced session state.
 
-The server generates a random program on session init. The client executes it
-on every heartbeat and includes the resulting `StackState { stack, ip }` in
-the signed payload. This ensures each heartbeat carries unique, verifiable
-computation without additional round-trips.
+The verifier performs state mutation only after validation succeeds. This preserves replay resistance and avoids desynchronizing the server after invalid requests.
 
-### Core Instruction Set
+## Canonical Signing Boundary
 
-| Opcode | Mnemonic | Operand     | Stack effect | Description                            |
-| ------ | -------- | ----------- | ------------ | -------------------------------------- |
-| `0x00` | PUSH     | u32 (4B LE) | +1           | Push literal                           |
-| `0x01` | ADD      | —           | −1           | `a + b` wrapping                       |
-| `0x02` | SUB      | —           | −1           | `a - b` wrapping                       |
-| `0x03` | MUL      | —           | −1           | `a * b` wrapping                       |
-| `0x04` | XOR      | —           | −1           | `a ^ b`                                |
-| `0x05` | AND      | —           | −1           | `a & b`                                |
-| `0x06` | OR       | —           | −1           | `a \| b`                               |
-| `0x07` | ROT      | —           | −1           | `a.rotate_left(b % 32)`                |
-| `0x08` | NOT      | —           | 0            | `!a` (unary)                           |
-| `0x09` | HASH     | —           | -(depth-1)   | Blake3 of all stack items → single u32 |
+The heartbeat signature covers a canonical JSON payload built from:
 
-The generator ensures ≥ 2 items on the stack before any binary opcode.
-NOT (0x08) does not change depth. HASH resets depth to 1.
+- `entropyData`
+- `fingerprint`
+- `geneCommitment`
+- `mutationStep`
+- `prevHash`
+- `sessionId`
+- `stackState`
+- `timestamp`
 
-### Mutation Opcodes (v0.6.0)
+The server constructs this payload using a `BTreeMap`, which orders top-level keys deterministically before serializing. The transport request uses snake_case field names, while the signed payload uses camelCase names that match the browser-side canonical message.
 
-The gene mutation extension operates on a separate `Vec<u8>` gene buffer and a
-bounded environment map `Vec<(u16 symbol, u32 quantity)>`. These opcodes are
-defined in `shared/src/vm_extensions.rs` and executed identically by both
-server and WASM to guarantee deterministic parity.
+The signature does not cover the `signature` field itself.
 
-| Opcode | Mnemonic           | Effect                                                        |
-| ------ | ------------------ | ------------------------------------------------------------- |
-| `0x23` | GENE_LOAD          | Push `gene[idx]` onto the stack                              |
-| `0x24` | GENE_STORE         | Pop stack top and store at `gene[idx]`                       |
-| `0x25` | MUTATE_POINT       | Apply wrapping byte delta at index                           |
-| `0x26` | INSERT             | Insert popped byte at index                                  |
-| `0x27` | DELETE             | Delete byte at index and push the removed value              |
-| `0x28` | TRANSCRIBE         | Push deterministic transcription hash of current gene state  |
-| `0x29` | APPLY_MUTAGEN      | Mix environment symbol quantity into gene byte at index      |
-| `0x2A` | FINALIZE_GENE_HASH | Push commitment-derived `u32` onto the stack                 |
-| `0x2B` | CONSUME            | Pop amount, subtract from environment symbol quantity        |
-| `0x2C` | PRODUCE            | Pop amount, add to environment symbol quantity               |
+## Hash-Chain Boundary
 
-**Constraints enforced at runtime:**
+Each accepted heartbeat advances a Blake3 hash chain.
 
-- Mutation program length capped at `MAX_MUTATION_PROGRAM_BYTES`
-- Environment record count capped at `MAX_ENV_RECORDS`
-- Environment records validated for sortedness, uniqueness, non-zero quantity
-- Stack underflow and unknown opcodes cause deterministic, symmetric failures on both server and WASM paths
+Inputs include:
 
----
+- previous hash-chain head
+- heartbeat timestamp
+- entropy data
+- VM stack state
+- current server salt
 
-## Behavioral Validation
+The server stores only the current accepted head as `last_hash`. A replayed heartbeat with an old `prev_hash` fails because the stored `last_hash` has already advanced.
 
-### Mouse Entropy
+The salt rotates after every accepted heartbeat. The next salt is returned only on acceptance, so rejected clients do not receive the material needed for the next valid chain step.
 
-Every heartbeat includes the mouse events collected since the previous
-heartbeat. Server checks:
+## Synthetic Gene Mutation Engine
 
-| Check                       | Threshold                            |
-| --------------------------- | ------------------------------------ |
-| Minimum event count         | ≥ 3                                  |
-| Minimum cumulative distance | ≥ 10 px                              |
-| Maximum average speed       | ≤ 2.0 px/ms (distance / elapsed ms)  |
-| Minimum pause count         | ≥ 1 (movement < 0.2 px over > 50 ms) |
+The Synthetic Gene Mutation Engine provides an additional deterministic continuity check.
 
-### Browser Fingerprint
+Core concepts:
 
-| Signal                         | Valid range   |
-| ------------------------------ | ------------- |
-| `aspectRatio` (width / height) | 0.5 – 3.0     |
-| `devicePixelRatio`             | 0 < dpr ≤ 5.0 |
-| `hardwareConcurrency`          | ≥ 1           |
+- `GeneState`: committed gene byte buffer plus environment records.
+- `MutationOrder`: mutation step plus encoded mutation program.
+- `pending_mutation`: the server-authored program expected on the next heartbeat.
+- `gene_commitment`: context-bound commitment over the candidate gene state, `session_id`, and `mutation_step`.
 
----
+The server and WASM runtime both execute the same mutation semantics from `shared/vm_extensions.rs`.
 
-## Rate Limiting
+Mutation lifecycle:
 
-Token bucket per `session_id`: 5 requests / 10-second window.
-Stale entries evicted every 60 seconds by the cleanup task.
-Rate-limited responses are indistinguishable from validation failures.
+1. Server stores a pending mutation program and step.
+2. Browser previews that mutation against its committed gene state.
+3. Browser sends the resulting `gene_commitment`.
+4. Server applies the same mutation to a clone of its committed gene state.
+5. Server compares the expected commitment with the browser commitment.
+6. On success, server commits the candidate state and issues the next mutation.
+7. Browser commits its preview only after receiving an accepted response.
 
----
+This design prevents a client from advancing mutation state independently of the server. The mutation order is server-authored, step-bound, and accepted only once.
 
-## SQLite Schema
+## Behavioral Trust Checks
 
-The schema is extended in v0.6.0 with four new columns to persist per-session
-gene mutation state. Migration is additive — columns are created when missing,
-preserving compatibility with existing deployments.
+ChronoSeal includes lightweight behavioral checks. These checks are not a complete human verification system; they are an automation cost signal.
 
-```sql
-CREATE TABLE IF NOT EXISTS sessions (
-    session_id            TEXT     PRIMARY KEY,
-    public_key            BLOB     NOT NULL,   -- 32-byte Ed25519 verifying key
-    salt                  BLOB     NOT NULL,   -- 16-byte current salt
-    last_hash             BLOB     NOT NULL,   -- 32-byte Blake3 chain head
-    chain_length          INTEGER  NOT NULL DEFAULT 1,
-    created_at            INTEGER  NOT NULL,   -- Unix ms
-    last_seen             INTEGER  NOT NULL,   -- Unix ms
-    expires_at            INTEGER  NOT NULL,   -- Unix ms
-    -- v0.6.0: gene mutation state
-    gene                  BLOB     NOT NULL DEFAULT X'',  -- Vec<u8> gene buffer
-    environment           BLOB     NOT NULL DEFAULT X'',  -- Vec<(u16, u32)> env records
-    pending_mutation      BLOB     NOT NULL DEFAULT X'',  -- server-issued mutation program
-    pending_mutation_step INTEGER  NOT NULL DEFAULT 0     -- current mutation step counter
-);
+Current checks include:
+
+- minimum mouse activity, when enabled
+- minimum total mouse movement distance
+- maximum average mouse speed
+- minimum pause count
+- timestamp drift bound
+- basic fingerprint field validation
+
+The checks are intentionally bounded and configurable. They should be treated as one layer in the attestation pipeline, not as the primary security primitive.
+
+## Storage Architecture
+
+Storage is abstracted by `DbPool`.
+
+| Backend | `db_type` | Characteristics |
+|---|---|---|
+| SQLite memory | `sqlite-in-memory` | default, process-local, ephemeral |
+| SQLite disk | `sqlite-in-disk` | persisted SQLite file at `db_path` |
+| Valkey | `valkey` | Valkey-compatible session store |
+
+The storage layer must support:
+
+- insert session
+- load session
+- update session
+- delete expired sessions
+- report statistics
+
+`valkey` mode reads `CHRONOSEAL_VALKEY_ADDR`, defaulting to `127.0.0.1:6666`. If connection setup fails, the current implementation logs a warning and falls back to in-memory SQLite.
+
+## Metrics and Observability
+
+ChronoSeal exposes two operational surfaces:
+
+- CLI commands: `status`, `health`, `metrics`, `stats`, `config check`
+- HTTP endpoints: `/health`, `/metrics`, `/stats`
+
+The metrics endpoint reports storage-derived counters including:
+
+- active sessions
+- expired sessions
+- maximum observed chain length
+
+The daemon uses structured tracing and can log to journald through normal systemd operation. Operators should avoid debug logging in production because internal identifiers may appear in logs.
+
+## Trust Boundaries
+
+### Browser Boundary
+
+The browser is untrusted. It may lie about entropy, fingerprint values, VM output, mutation commitment, timing, and session identifiers.
+
+Mitigation:
+
+- signature verification binds payloads to the browser session key
+- hash-chain checks reject stale state
+- mutation commitment checks reject incorrect gene progression
+- timing and behavioral checks reject implausible requests
+
+### WASM Boundary
+
+WASM code runs in the browser and is therefore not trusted as secure enclave code.
+
+Mitigation:
+
+- the server independently recomputes critical deterministic state
+- private key custody raises automation cost but is not treated as hardware-backed secrecy
+- failures do not reveal detailed reasons to callers
+
+### Storage Boundary
+
+Storage is trusted for session continuity. If storage is lost, sessions cannot continue. If storage is tampered with, attestation integrity can be affected.
+
+Mitigation:
+
+- use proper filesystem permissions for SQLite disk mode
+- deploy Valkey on a trusted network or protected socket
+- keep ChronoSeal behind normal host and service hardening
+
+### Network Boundary
+
+ChronoSeal expects production traffic to be protected by TLS. Plaintext deployment weakens confidentiality and makes traffic analysis easier.
+
+Mitigation:
+
+- terminate TLS at a reverse proxy or load balancer
+- keep `/init` and `/hb` same-origin with protected content when possible
+- avoid exposing internal metrics broadly
+
+## Failure Semantics
+
+ChronoSeal intentionally separates transport success from attestation success.
+
+| Failure class | HTTP behavior | State mutation |
+|---|---|---|
+| malformed route-level request | normal HTTP error handling | no session advancement |
+| invalid heartbeat semantics | `200 OK` with `{"status":"ok"}` | no session advancement |
+| rejected heartbeat | `200 OK` with `{"status":"ok"}` | no session advancement |
+| accepted heartbeat | `200 OK` with next-state fields | session state advances from the verifier's perspective |
+
+This ambiguity reduces attacker feedback. Application integrations must check for the presence of `next_salt`, `next_mutation_step`, and `next_mutation_order_b64` rather than treating any `status: ok` as an accepted heartbeat.
+
+## Invariants
+
+The architecture relies on these invariants:
+
+- A session has exactly one expected `pending_mutation_step` at a time.
+- A pending mutation is consumed only by an accepted heartbeat.
+- `last_hash` changes only after a heartbeat passes verification.
+- `salt` changes only after a heartbeat passes verification.
+- `gene` and `environment` change only after mutation commitment validation succeeds.
+- The next mutation order is generated only from an accepted candidate state.
+- Rejected heartbeats do not reveal the failed validation stage.
+- Browser-side preview state is committed only after an accepted heartbeat response.
+
+Breaking these invariants can introduce replay acceptance, client/server desynchronization, or oracle behavior.
+
+## Concurrency Notes
+
+ChronoSeal currently verifies a heartbeat by loading a session, computing candidate state, and writing the updated record back to storage. The intended operational model is one live heartbeat stream per browser session.
+
+Concurrent heartbeats for the same `session_id` should naturally collapse to at most one accepted progression because both requests present the same `prev_hash` and `mutation_step`; after the first accepted update, the second request becomes stale. Storage backends must preserve update visibility strongly enough for this assumption to hold.
+
+## Deployment Shape
+
+Typical production topology:
+
+```text
+Internet
+   |
+   v
+TLS reverse proxy
+   |
+   v
+chronoseal daemon on 127.0.0.1:3000
+   |
+   v
+SQLite disk or Valkey storage
 ```
 
-In-memory SQLite (`sqlite-in-memory`) — all sessions lost on server restart by
-design. Clients re-initialise transparently on the next page load. Use
-`sqlite-in-disk` for persistent sessions across restarts.
+Recommended deployment properties:
 
----
+- run under systemd with a dedicated service user
+- bind to localhost behind a reverse proxy unless direct exposure is required
+- serve over HTTPS
+- keep debug logs disabled
+- monitor `/health`, `/metrics`, and `/stats`
+- use `sqlite-in-memory` for ephemeral local sessions
+- use `sqlite-in-disk` or `valkey` when sessions must survive process restarts
 
-## Storage Backend (v0.6.0)
+## Limitations
 
-ChronoSeal v0.6.0 introduces selectable database backends via the `db_type`
-configuration option. The default remains in-memory to preserve ephemeral
-session behavior.
+ChronoSeal is not:
 
-### Backend Options
+- a user authentication system
+- a CAPTCHA
+- a fraud scoring engine
+- a hardware attestation system
+- a persistent identity framework
+- a complete defense against fully resourced browser farms
 
-| `db_type`          | Behavior                                                             |
-| ------------------ | -------------------------------------------------------------------- |
-| `sqlite-in-memory` | Default. All sessions ephemeral; lost on restart. Zero disk I/O.    |
-| `sqlite-in-disk`   | Persistent sessions. Requires `db_path`. Survives restarts.         |
-| `valkey`           | Compatibility mode. Currently falls back to in-memory. CLI contract preserved. |
+It is a protocol layer that makes browser automation and replay more expensive by requiring correct, continuous, stateful execution.
 
-### Configuration
+## Related Documents
 
-**Config file** (`/etc/chronoseal/config.toml`):
-```toml
-db_type = "sqlite-in-disk"
-db_path = "/var/lib/chronoseal/chronoseal.sqlite"
-```
-
-**Environment variable**:
-```bash
-CHRONOSEAL_DB_TYPE=sqlite-in-disk
-CHRONOSEAL_DB_PATH=/var/lib/chronoseal/chronoseal.sqlite
-```
-
-**CLI flag**:
-```bash
-chronoseal run --db-type sqlite-in-disk --db-path /var/lib/chronoseal/chronoseal.sqlite
-```
-
-**Inspect active backend**:
-```bash
-chronoseal db-type --format text
-```
-
-### Precedence
-
-```
-CLI flags > CHRONOSEAL_* environment variables > config file > defaults
-```
-
-### Migration Notes
-
-- Schema migration is additive; new columns are created when missing on startup.
-- Switching from `sqlite-in-memory` to `sqlite-in-disk` requires no code changes — only config.
-- `valkey` is available in the CLI contract today; full backend support is tracked for a future release.
-- Existing deployments without the v0.6.0 mutation columns will have those columns added automatically on first start.
-
----
-
-## Threat Model
-
-### In Scope
-
-| Threat                                     | Mitigation                                                      |
-| ------------------------------------------ | --------------------------------------------------------------- |
-| Playwright / Puppeteer / Selenium          | Mouse entropy + behavioral validation                           |
-| Puppeteer Stealth, undetected-chromedriver | Signature over VM execution state                               |
-| Heartbeat replay                           | Hash chain + ±30s timestamp window                              |
-| Mutation replay                            | mutation_step + gene_commitment parity check (v0.6.0)           |
-| Mutation tampering                         | Server recomputes candidate gene from authoritative program (v0.6.0) |
-| Signature forgery                          | Private key isolated in WASM memory                             |
-| Parallel session sharing                   | Each session bound to a unique keypair                          |
-| Brute-forced session IDs                   | 256-bit random entropy                                          |
-| Flooding with fake session IDs             | Rate limiter + periodic HashMap eviction                        |
-| Traffic analysis                           | Uniform `{"status":"ok"}` on all failure paths                  |
-| Malformed mutation programs                | Strict parsing, length caps, underflow/unknown-opcode errors    |
-
-### Out of Scope
-
-| Threat                             | Reason                                   |
-| ---------------------------------- | ---------------------------------------- |
-| Real browser with real human input | Indistinguishable from a legitimate user |
-| WASM reverse engineering           | Obfuscation is not a security primitive  |
-| Server-side compromise             | Outside the scope of client attestation  |
-
-ChronoSeal raises cost and complexity of automated access. It is not a
-cryptographic proof of humanity and does not claim to be.
-
----
-
-## Module Reference
-
-| Path                                  | Purpose                                                              |
-| ------------------------------------- | -------------------------------------------------------------------- |
-| `shared/src/protocol.rs`              | Shared types: `InitRequest`, `HeartbeatRequest`, `StackState`, …    |
-| `shared/src/hashing.rs`               | `initial_hash`, `next_chain_hash`, `hash_stack`                     |
-| `shared/src/constants.rs`             | All tunable parameters                                               |
-| `shared/src/gene.rs`                  | Gene model, deterministic commitment (`chronoseal/gene/v1`) [v0.6.0] |
-| `shared/src/vm_extensions.rs`         | Mutation opcode set, shared engine for server/WASM parity [v0.6.0]  |
-| `server/src/routes/init.rs`           | `POST /init` handler                                                 |
-| `server/src/routes/heartbeat.rs`      | `POST /hb` handler                                                   |
-| `server/src/session.rs`               | `create_session`, `verify_heartbeat`, `validate_mutation_parity`     |
-| `server/src/crypto.rs`                | `verify_signature` — BTreeMap canonical JSON                         |
-| `server/src/trust.rs`                 | `validate_mouse` — speed, distance, pauses                           |
-| `server/src/fingerprint.rs`           | `validate` — aspect ratio, DPR, HW concurrency                       |
-| `server/src/vm.rs`                    | `generate_random_program`                                            |
-| `server/src/ratelimit.rs`             | `RateLimiter::check`, `evict_stale`                                  |
-| `server/src/cleanup.rs`               | Background loop: expire sessions + evict rate limiter                |
-| `server/src/storage.rs`               | SQLite init, backend selection, `current_time_ms`                    |
-| `wasm/src/crypto.rs`                  | `generate_keypair`, `sign_message`, `compute_next_hash`              |
-| `wasm/src/vm.rs`                      | `run_program` — stack machine executor                               |
-| `wasm/src/vm_extensions.rs`           | `preview_mutation`, `commit_mutation` [v0.6.0]                       |
-| `frontend/heartbeat.js`               | Session init, heartbeat loop, chain advancement                      |
-| `frontend/entropy.js`                 | Mouse event ring buffer, `collectEntropy`                            |
-| `frontend/transport.js`               | `sendRequest` fetch wrapper                                          |
+- [API Reference](API.md)
+- [Deployment Guide](DEPLOYMENT.md)
+- [Threat Model](THREAT_MODEL.md)
+- [WASM Build Guide](WASM_BUILD.md)
+- [Design Philosophy](DESIGN-PHILOSOPHY.md)
+- [Privacy Policy](PRIVACY%20POLICY.md)

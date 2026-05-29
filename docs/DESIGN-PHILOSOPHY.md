@@ -1,41 +1,125 @@
 # ChronoSeal Design Philosophy
 
-**"Everything is a File" — Unix-Native Software Design**
+ChronoSeal is designed for operators who want a local, inspectable, Unix-native browser attestation layer rather than a hosted anti-bot black box.
 
-ChronoSeal is intentionally built as a **first-class citizen of Linux**. The entire application is designed to behave like a well-engineered native file within the Unix filesystem.
+## Core Position
 
-### Why This Philosophy Matters
+ChronoSeal is infrastructure software. It should feel closer to `nginx`, `redis-server`, or a small system daemon than to a third-party analytics platform.
 
-ChronoSeal is designed so that administrators can operate, monitor, configure, and integrate it using the same reliable, transparent, and trusted tools and patterns they already use on Linux systems — without fighting the operating environment.
+Design priorities:
 
-### Core Principles
+- CLI-first operation
+- explicit configuration
+- deterministic protocol behavior
+- small runtime surface
+- privacy-preserving state
+- observable health and metrics
+- no hidden telemetry
+- no persistent user profiling
 
-- **Everything is a File**: The application must be controllable, inspectable, and composable through standard Unix interfaces (CLI, files, signals, pipes, and environment).
-- **CLI as Source of Truth**: All operations — starting, stopping, configuring, monitoring, and debugging — must be possible from the command line with excellent discoverability.
-- **Behave Like a Native File**: Predictable lifecycle management through commands, signals (`SIGHUP`, `SIGTERM`, `SIGUSR1`), logs, configuration files, and standard process semantics.
-- **Composability**: Must work naturally with pipes, redirection, scripts, systemd, Ansible, Docker, and orchestration tools.
-- **Observability by Default**: All important state and metrics should be accessible as text or structured data.
-- **Minimal Friction, Maximum Durability**: One-line installer, world-class `--help`, proper man pages, and decades-long maintainability are non-negotiable.
-- **Respect for the OS**: Follows Linux Filesystem Hierarchy Standard (FHS), XDG Base Directory specification, and hardened systemd practices.
+## What ChronoSeal Optimizes For
 
-### Non-Goals
+### Operator Control
 
-ChronoSeal is **not** designed to be:
-- Cloud-first or vendor-specific
-- Browser-first or JavaScript-heavy
-- Dependency-heavy or framework-driven
-- GUI-centric (any graphical interface must be a thin wrapper)
-- Telemetry-oriented or privacy-invasive
-- Optimized for rapid prototyping at the cost of long-term reliability
+Operators should be able to build, run, inspect, configure, monitor, and stop the service with ordinary Unix tools.
 
-These non-goals help keep the project focused on stability, simplicity, security, and deep Unix integration.
+This is why ChronoSeal provides:
 
-### Development Mindset
+- `chronoseal run`
+- `chronoseal status`
+- `chronoseal health`
+- `chronoseal config check`
+- `chronoseal metrics`
+- `chronoseal stats`
+- shell completions
+- systemd integration
 
-- Production robustness, security, and long-term sustainability take clear precedence over development speed.
-- Every design decision is evaluated against one question:  
-  **“Does this make ChronoSeal feel like it naturally belongs in `/usr/bin/`?”**
+### Determinism
 
-This philosophy guided the complete refactoring of ChronoSeal and continues to drive all future development.
+The protocol depends on deterministic agreement between server Rust and browser WASM.
 
-**Status**: Core architecture and systemd integration completed. Rich CLI, runtime configuration system, and one-line installer are in active development.
+Shared logic belongs in `shared/` when divergence would create security or correctness risk. This includes:
+
+- protocol structs
+- hash-chain semantics
+- synthetic gene model
+- mutation opcode behavior
+- mutation order encoding
+
+### Cost Escalation
+
+ChronoSeal does not claim impossible security. It raises the cost of automation by making clients maintain:
+
+- a browser-local signing key
+- a signed canonical heartbeat payload
+- a Blake3 hash chain
+- VM execution output
+- server-issued mutation progression
+- plausible timing and interaction signals
+
+The objective is to make cheap automation brittle and expensive automation more complex.
+
+### Silent Rejection
+
+Heartbeat rejection is intentionally ambiguous. Invalid heartbeats receive the same `status` value as accepted heartbeats, but accepted responses include next-state fields.
+
+This avoids turning the API into a validation oracle. Integrators must check for `next_salt`, `next_mutation_step`, and `next_mutation_order_b64`.
+
+### Privacy
+
+ChronoSeal should not become a surveillance system.
+
+It avoids:
+
+- long-term user identifiers
+- browser history
+- cross-site identity graphs
+- fingerprint databases
+- behavioral profiling as a product feature
+
+It stores only the session state required for continuity.
+
+## Non-Goals
+
+ChronoSeal is not:
+
+- a CAPTCHA
+- a fraud scoring engine
+- an authentication provider
+- a hosted SaaS product
+- a persistent fingerprinting system
+- a replacement for authorization checks
+- a complete defense against real browser farms
+
+## Operational Assumptions
+
+ChronoSeal assumes:
+
+- Linux or a Unix-like host
+- systemd for production service management
+- TLS in production
+- browser clients can execute WASM
+- operators can manage config files and service users
+- application owners decide how attestation status gates protected resources
+
+## Engineering Biases
+
+When the project faces tradeoffs, prefer:
+
+- explicit configuration over implicit magic
+- server-side recomputation over browser trust
+- bounded deterministic execution over unbounded heuristics
+- clear CLI output over hidden dashboards
+- local deployment over mandatory cloud dependencies
+- privacy by data minimization over privacy by policy alone
+
+## Success Criteria
+
+ChronoSeal is succeeding when:
+
+- legitimate browser sessions advance without user friction
+- simple scrapers cannot pass the protocol
+- automation requires a full stateful implementation
+- operators can debug deployments with normal Unix tools
+- stored data remains minimal and short-lived
+- documentation reflects the implementation precisely

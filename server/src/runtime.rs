@@ -204,14 +204,7 @@ pub fn db_type_report() -> DbTypeReport {
 }
 
 fn init_db_pool(config: &Config) -> Result<storage::DbPool, Box<dyn std::error::Error>> {
-    match config.db_type {
-        crate::config::DbType::SqliteInMemory => storage::init_pool(Path::new(":memory:")),
-        crate::config::DbType::SqliteInDisk => storage::init_pool(&config.db_path),
-        crate::config::DbType::Valkey => {
-            warn!("db_type=valkey selected; using sqlite-in-memory compatibility mode in v0.6.0");
-            storage::init_pool(Path::new(":memory:"))
-        }
-    }
+    storage::DbPool::init(config)
 }
 
 pub fn probe_health(config: &Config) -> HealthReport {
@@ -278,11 +271,9 @@ async fn health_handler() -> impl IntoResponse {
 async fn stats_handler(
     axum::extract::State(state): axum::extract::State<Arc<session::AppState>>,
 ) -> Result<Json<StoreStats>, (StatusCode, String)> {
-    let db = state
+    state
         .db_pool
-        .get()
-        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    storage::stats(&db)
+        .stats()
         .map(Json)
         .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))
 }
@@ -290,11 +281,9 @@ async fn stats_handler(
 async fn metrics_handler(
     axum::extract::State(state): axum::extract::State<Arc<session::AppState>>,
 ) -> Result<String, (StatusCode, String)> {
-    let db = state
+    state
         .db_pool
-        .get()
-        .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
-    storage::stats(&db)
+        .stats()
         .map(|stats| {
             format!(
                 "# HELP chronoseal_sessions Active ChronoSeal sessions\n# TYPE chronoseal_sessions gauge\nchronoseal_sessions {}\n# HELP chronoseal_expired_sessions Expired sessions not yet removed\n# TYPE chronoseal_expired_sessions gauge\nchronoseal_expired_sessions {}\n# HELP chronoseal_max_chain_length Maximum heartbeat chain length\n# TYPE chronoseal_max_chain_length gauge\nchronoseal_max_chain_length {}\n",
@@ -430,6 +419,7 @@ mod tests {
             min_pause_count: 0,
             require_mouse_activity: false,
             gene_size: shared::constants::DEFAULT_GENE_SIZE,
+            mutation_rounds: shared::constants::DEFAULT_MUTATION_ROUNDS,
         }
     }
 
@@ -445,11 +435,10 @@ mod tests {
     fn test_init_db_pool_sqlite_in_memory() {
         let config = base_config();
         let pool = init_db_pool(&config).unwrap();
-        let conn = pool.get().unwrap();
-        let count: u64 = conn
-            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(count, 0);
+        let stats = pool.stats().unwrap();
+        assert_eq!(stats.sessions, 0);
+        assert_eq!(stats.expired_sessions, 0);
+        assert_eq!(stats.max_chain_length, 0);
     }
 
     #[test]
@@ -459,11 +448,10 @@ mod tests {
         config.db_path = std::path::PathBuf::from("/tmp/chronoseal-db-type-disk.sqlite");
         let _ = std::fs::remove_file(&config.db_path);
         let pool = init_db_pool(&config).unwrap();
-        let conn = pool.get().unwrap();
-        let count: u64 = conn
-            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(count, 0);
+        let stats = pool.stats().unwrap();
+        assert_eq!(stats.sessions, 0);
+        assert_eq!(stats.expired_sessions, 0);
+        assert_eq!(stats.max_chain_length, 0);
     }
 
     #[test]
@@ -471,10 +459,9 @@ mod tests {
         let mut config = base_config();
         config.db_type = crate::config::DbType::Valkey;
         let pool = init_db_pool(&config).unwrap();
-        let conn = pool.get().unwrap();
-        let count: u64 = conn
-            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
-            .unwrap();
-        assert_eq!(count, 0);
+        let stats = pool.stats().unwrap();
+        assert_eq!(stats.sessions, 0);
+        assert_eq!(stats.expired_sessions, 0);
+        assert_eq!(stats.max_chain_length, 0);
     }
 }

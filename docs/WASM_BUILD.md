@@ -1,301 +1,163 @@
-# ChronoSeal — WASM Build Guide
+# ChronoSeal WASM Build Guide
 
-## Overview
+ChronoSeal uses a Rust-generated WASM package for browser-side attestation. The package is built from `wasm/` and copied into `frontend/pkg`.
 
-The client-side cryptographic core of ChronoSeal is written in Rust and
-compiled to WebAssembly (WASM). The JavaScript frontend (`heartbeat.js`)
-imports functions from this WASM module to generate keypairs, sign heartbeat
-payloads, compute hash chain links, and execute the stack machine program.
+## Responsibilities
 
-The import line in `heartbeat.js`:
+The WASM runtime:
 
-```js
-import init, { generate_keypair, sign_message, compute_next_hash, run_program }
-  from './pkg/antibot_wasm.js';
-```
+- generates a browser-local Ed25519 keypair
+- signs canonical heartbeat payloads
+- computes Blake3 hash-chain progression
+- executes server-issued VM opcode programs
+- initializes synthetic gene state
+- previews gene mutation commitments
+- commits or discards preview state after heartbeat response
 
-`./pkg/antibot_wasm.js` is a **generated file**. It does not exist in the
-repository and must be produced by building the `wasm/` crate before running
-the server.
+The WASM runtime is not treated as a secure enclave. The server independently recomputes deterministic state.
 
----
-
-## How the WASM Module is Built
-
-The tool that compiles Rust to WASM and generates the JavaScript glue is
-[`wasm-pack`](https://rustwasm.github.io/wasm-pack/).
-
-When you run:
-
-```bash
-wasm-pack build wasm --target web --release
-```
-
-wasm-pack does the following in sequence:
-
-1. Compiles `wasm/src/lib.rs` (and its submodules) to a `.wasm` binary using
-   the `wasm32-unknown-unknown` target.
-2. Runs `wasm-bindgen` to inspect every `#[wasm_bindgen]`-annotated function
-   and struct and generate a JavaScript wrapper for each one.
-3. Optionally runs `wasm-opt` (from Binaryen) to size-optimise the binary.
-4. Writes all output to `wasm/pkg/`.
-
----
-
-## Output: `wasm/pkg/`
-
-After a successful build, `wasm/pkg/` contains:
-
-```
-wasm/pkg/
-├── antibot_wasm.js          ← ES module; the file heartbeat.js imports
-├── antibot_wasm_bg.wasm     ← compiled WASM binary (~300–800 KB release)
-├── antibot_wasm_bg.js       ← internal memory bridge (do not import directly)
-├── antibot_wasm.d.ts        ← TypeScript type declarations
-├── antibot_wasm_bg.d.ts     ← TypeScript declarations for the bg module
-└── package.json
-```
-
-### `antibot_wasm.js`
-
-This is the public entry point. It contains:
-
-- An `init()` function that fetches and instantiates the `.wasm` binary.
-- One JavaScript wrapper function for each `#[wasm_bindgen]` export in
-  `wasm/src/`:
-
-| Rust export | JS wrapper | Description |
-|---|---|---|
-| `generate_keypair()` | `generate_keypair()` | Generate Ed25519 keypair; return hex public key |
-| `get_public_key()` | `get_public_key()` | Return hex public key, or `""` if not initialised |
-| `sign_message(msg)` | `sign_message(msg)` | Sign string; return hex signature, or `""` if not initialised |
-| `compute_next_hash(prev, ts, entropy, stack, salt)` | `compute_next_hash(...)` | Compute next Blake3 chain hash |
-| `run_program(b64)` | `run_program(b64)` | Execute base64 VM program; return `{ stack, ip }` |
-
-### `antibot_wasm_bg.wasm`
-
-The compiled binary. The `.bg` suffix means "background" — this is the raw
-WASM that `antibot_wasm.js` loads internally. You should not reference this
-file directly in your HTML.
-
----
-
-## Step-by-Step Build
-
-### 1. Install the Rust WASM target
+## Requirements
 
 ```bash
 rustup target add wasm32-unknown-unknown
-```
-
-This is a one-time step. Without it, the Rust compiler cannot produce WASM
-output.
-
-### 2. Install wasm-pack
-
-```bash
 cargo install wasm-pack
-```
-
-Or via the installer script:
-
-```bash
-curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 ```
 
 Verify:
 
 ```bash
 wasm-pack --version
-# wasm-pack 0.13.x
 ```
 
-### 3. Build the WASM module
+## Build
 
-From the project root:
+From the repository root:
 
 ```bash
 wasm-pack build wasm --target web --release
-```
-
-`--target web` produces an ES module (`import`/`export` syntax) suitable for
-use directly in a browser without a bundler. Other targets (`bundler`,
-`nodejs`, `no-modules`) produce different output formats and are not
-compatible with the ChronoSeal frontend as written.
-
-`--release` enables Rust's release optimisations (inlining, dead code
-elimination, size reduction). Omit it during development for faster builds
-and better panic messages.
-
-### 4. Move the output to the frontend
-
-```bash
 rm -rf frontend/pkg
 mv wasm/pkg frontend/pkg
 ```
 
-The frontend expects the WASM module at `frontend/pkg/antibot_wasm.js`
-because `heartbeat.js` imports from `./pkg/antibot_wasm.js` relative to
-the `frontend/` directory, which is where the server's static file handler
-is rooted.
+`--target web` emits native ES modules compatible with the static frontend.
 
----
+Development build:
 
-## Using the Build Script
+```bash
+wasm-pack build wasm --target web
+rm -rf frontend/pkg
+mv wasm/pkg frontend/pkg
+```
 
-The convenience script at `scripts/build.sh` performs all steps in order:
+Full project build:
 
 ```bash
 bash scripts/build.sh
 ```
 
-This builds the WASM module, moves it to `frontend/pkg/`, and then builds
-the server binary. Run this for a clean full build before deployment.
+## Output Files
 
-For development iteration where you are only changing Rust WASM code:
+The package name comes from the crate name `chronoseal-wasm`, so generated files use the `chronoseal_wasm` prefix.
 
-```bash
-wasm-pack build wasm --target web   # (omit --release for speed)
-rm -rf frontend/pkg && mv wasm/pkg frontend/pkg
-```
+Expected `frontend/pkg/` contents include:
 
-For development where you are only changing server code:
+- `chronoseal_wasm.js`
+- `chronoseal_wasm_bg.wasm`
+- `chronoseal_wasm.d.ts`
+- `package.json`
 
-```bash
-cargo build -p server
-```
+Generated files in `wasm/pkg/` and `frontend/pkg/` are build artifacts and should be regenerated during release.
 
----
-
-## How `heartbeat.js` Loads the Module
-
-`heartbeat.js` uses a standard ES module dynamic import pattern:
+## Browser Import
 
 ```js
-import init, { generate_keypair, sign_message, compute_next_hash, run_program }
-  from './pkg/antibot_wasm.js';
-
-export async function initHeartbeat() {
-    // 1. Fetch and instantiate the .wasm binary
-    await init();
-
-    // 2. Generate keypair — private key stored in WASM memory only
-    const pubKeyHex = generate_keypair();
-
-    // 3. Send public key to server, receive session_id and chain seed
-    // ...
-}
+import init, {
+  generate_keypair,
+  get_public_key,
+  sign_message,
+  compute_next_hash,
+  run_program,
+  init_gene_state,
+  preview_gene_commitment,
+  commit_gene_preview,
+  discard_gene_preview,
+  current_gene_commitment
+} from './pkg/chronoseal_wasm.js';
 ```
 
-`init()` is the default export from `antibot_wasm.js`. It fetches
-`antibot_wasm_bg.wasm` (from the same `pkg/` directory) via `fetch()`,
-compiles it in the browser's WASM engine, and links it to the JS glue
-layer. After `await init()` returns, all the named exports
-(`generate_keypair`, `sign_message`, etc.) are ready to call.
+Call `await init()` before using any exported function.
 
-The `init()` call must complete before any other WASM function is called.
-Calling `sign_message()` or `compute_next_hash()` before `await init()`
-returns will produce an empty string (the module is not yet instantiated).
+## Exported Functions
 
----
+| Function | Signature | Failure value |
+|---|---|---|
+| `generate_keypair()` | `() -> string` | `""` only on unexpected failure |
+| `get_public_key()` | `() -> string` | `""` if no keypair exists |
+| `sign_message(msg)` | `(string) -> string` | `""` if no keypair exists or signing fails |
+| `compute_next_hash(prev, ts, entropy, stack, salt)` | `(string, u64, string, string, string) -> string` | panic/error path should be avoided by valid inputs |
+| `run_program(b64)` | `(string) -> JsValue` | returns empty/default stack state on invalid execution path |
+| `init_gene_state(gene_size)` | `(u32) -> bool` | `false` |
+| `preview_gene_commitment(order_b64, session_id, mutation_step, rounds)` | `(string, string, u64, u8) -> string` | `""` |
+| `commit_gene_preview()` | `() -> bool` | `false` |
+| `discard_gene_preview()` | `() -> void` | none |
+| `current_gene_commitment(session_id, mutation_step)` | `(string, u64) -> string` | `""` if no committed state exists |
 
-## Serving the WASM Binary
+`rounds = 0` in `preview_gene_commitment` selects the shared default mutation round count.
 
-Browsers require WASM files to be served with the correct MIME type:
+## Mutation State Lifecycle
 
+The browser must keep two gene states:
+
+- committed state: the last accepted state
+- preview state: candidate state for the heartbeat currently being sent
+
+Expected sequence:
+
+1. Call `init_gene_state(gene_size)` after `/init`.
+2. Call `preview_gene_commitment(order_b64, session_id, mutation_step, rounds)` before signing `/hb`.
+3. Include the returned commitment and mutation step in the signed heartbeat.
+4. If the response contains next-state fields, call `commit_gene_preview()`.
+5. If the heartbeat is rejected or errors, call `discard_gene_preview()`.
+
+Never commit preview state before the server accepts the heartbeat.
+
+## Hash-Chain Ordering
+
+After an accepted heartbeat, compute the next local hash with the salt that was active when the heartbeat was sent. Then replace the local salt with `next_salt`.
+
+Correct order:
+
+```js
+const sentSalt = currentSalt;
+currentSalt = resp.next_salt;
+prevHash = compute_next_hash(prevHash, timestamp, entropyJson, stackStateJson, sentSalt);
 ```
+
+This mirrors the server, which computes and stores the new hash before rotating to the next salt.
+
+## Serving WASM
+
+The `.wasm` file must be served with:
+
+```text
 Content-Type: application/wasm
 ```
 
-Most web servers set this automatically for `.wasm` files. If you see the
-error:
+ChronoSeal's built-in static file service handles this for normal deployments.
 
-```
-WebAssembly.instantiate(): Response has unsupported MIME type
-```
+## Validation
 
-Add the MIME type to your server configuration:
-
-**nginx:**
-```nginx
-types {
-    application/wasm  wasm;
-}
-```
-
-**Apache `.htaccess`:**
-```apache
-AddType application/wasm .wasm
-```
-
-The Axum `ServeDir` handler used by ChronoSeal's built-in static server
-sets the correct MIME type automatically via `tower-http`.
-
----
-
-## What Is Not in the Repository
-
-| Path | Why excluded |
-|---|---|
-| `wasm/pkg/` | Generated build output — changes on every build |
-| `frontend/pkg/` | Same generated output, moved to serve location |
-| `target/` | Standard Rust build artefacts |
-
-Both `wasm/pkg/` and `frontend/pkg/` are listed in `.gitignore`. Committing
-them would bloat the repository (the `.wasm` binary alone is 300–800 KB),
-create noisy diffs on every rebuild, and give a false impression that the
-WASM module is pre-built and ready to use without a build step.
-
----
-
-## Troubleshooting
-
-### `wasm32-unknown-unknown` target not found
-
-```
-error[E0463]: can't find crate for `std`
-```
-
-Fix:
+Recommended checks after WASM changes:
 
 ```bash
-rustup target add wasm32-unknown-unknown
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+wasm-pack build wasm --target web
 ```
 
-### `wasm-pack` not found
+Then refresh `frontend/pkg`:
 
 ```bash
-cargo install wasm-pack
+rm -rf frontend/pkg
+mv wasm/pkg frontend/pkg
 ```
-
-### `wasm-opt` not found (warning, not an error)
-
-wasm-pack prints a warning if `wasm-opt` is not installed. The build still
-succeeds; the binary is just not size-optimised.
-
-```bash
-# On Debian/Ubuntu/Arch
-sudo apt install binaryen      # Debian/Ubuntu
-sudo pacman -S binaryen        # Arch
-```
-
-### `antibot_wasm_bg.wasm` fetch fails (404)
-
-The `.wasm` file is not being served from `frontend/pkg/`. Verify:
-
-```bash
-ls /mnt/Programs/ChronoSeal/frontend/pkg/
-# Should list: antibot_wasm.js  antibot_wasm_bg.wasm  ...
-```
-
-If the directory is empty or missing, re-run the build steps above.
-
-### MIME type error in browser
-
-See the "Serving the WASM Binary" section above.
-
-### `sign_message` or `generate_keypair` returns empty string
-
-The WASM keypair has not been initialised. Ensure `await init()` and
-`generate_keypair()` are called (and awaited) before any other WASM
-function. Check the browser console for any errors during `init()`.

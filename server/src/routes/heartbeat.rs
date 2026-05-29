@@ -29,22 +29,7 @@ pub async fn handler(
     }
 
     let config = state.get_config();
-    let conn = match state.db_pool.get() {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!("Db pool error: {}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(HeartbeatResponse {
-                    status: "error".into(),
-                    next_salt: None,
-                    next_mutation_step: None,
-                    next_mutation_order_b64: None,
-                }),
-            );
-        }
-    };
-    match crate::session::verify_heartbeat(&conn, &config, &payload) {
+    match crate::session::verify_heartbeat(&state.db_pool, &config, &payload) {
         Ok(result) => (
             StatusCode::OK,
             Json(HeartbeatResponse {
@@ -145,7 +130,11 @@ mod tests {
                 hardware_concurrency: 8,
             },
             mutation_step,
-            gene_commitment: shared::gene::commitment_hex(&candidate),
+            gene_commitment: shared::gene::commitment_hex_with_context(
+                &candidate,
+                &init.session_id,
+                mutation_step,
+            ),
             signature: String::new(),
         };
         sign_request(sk, &mut req);
@@ -157,7 +146,7 @@ mod tests {
     ) -> (Arc<AppState>, InitResponse, SigningKey) {
         let pool = crate::storage::init_pool(Path::new(":memory:")).unwrap();
         let state = Arc::new(AppState {
-            db_pool: pool,
+            db_pool: pool.clone(),
             rate_limiter: tokio::sync::Mutex::new(crate::ratelimit::RateLimiter::new()),
             config: std::sync::RwLock::new(config.clone()),
         });
@@ -165,8 +154,7 @@ mod tests {
         let mut rng = rand::thread_rng();
         let sk = SigningKey::generate(&mut rng);
         let pk_hex = hex::encode(sk.verifying_key().to_bytes());
-        let conn = state.db_pool.get().unwrap();
-        let init = crate::session::create_session(&conn, &config, &pk_hex).unwrap();
+        let init = crate::session::create_session(&pool, &config, &pk_hex).unwrap();
         (state, init, sk)
     }
 

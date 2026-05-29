@@ -1,205 +1,240 @@
-# ChronoSeal — Threat Model
+# ChronoSeal Threat Model
 
-## Purpose
+ChronoSeal is a cost-raising browser attestation layer. It makes replay, stale state reuse, and incomplete automation more expensive by requiring signed, continuous, deterministic browser-side state progression.
 
-This document defines what ChronoSeal is designed to protect against, what
-it explicitly does not protect against, and the reasoning behind each
-design decision in security terms.
+It is not a perfect bot blocker, CAPTCHA replacement, hardware attestation system, fraud engine, or identity provider.
 
-ChronoSeal is a **cost-raising mechanism**. It does not claim to make
-automated access impossible. It makes automated access expensive, complex
-to maintain, and operationally fragile at scale.
+## Security Objectives
 
----
+ChronoSeal aims to:
 
-## Assets Being Protected
+- reject stale or replayed heartbeat payloads
+- reject heartbeats that do not maintain the server-issued mutation sequence
+- bind heartbeat payloads to a browser-local Ed25519 session key
+- make basic HTTP clients insufficient
+- make browser automation maintain multiple synchronized state channels
+- avoid detailed rejection feedback
+- preserve privacy by avoiding persistent user identity state
 
-| Asset | Description |
+## Protected Assets
+
+| Asset | Protection focus |
 |---|---|
-| Web page content | HTML, rendered data, scraped text |
-| API responses | JSON endpoints that serve structured data |
-| Server compute | CPU and bandwidth consumed by automated clients |
-| Rate-limited resources | Endpoints with per-user quotas |
-| Behavioral analytics | Metrics polluted by bot traffic |
+| Protected page/API access | Require live attestation before allowing continued access |
+| Session continuity | Ensure each accepted heartbeat advances from the last accepted state |
+| Server compute | Rate-limit and reject invalid clients without expensive application work |
+| Protocol state | Protect hash-chain, salt, and mutation progression |
+| User privacy | Avoid long-term tracking and detailed failure disclosure |
 
----
+## Trust Assumptions
 
-## Attacker Profiles
+ChronoSeal assumes:
 
-### Level 1 — Script Kiddie / Commodity Scraper
+- the server host and daemon process are trusted
+- storage is trusted for session continuity
+- TLS protects traffic in production
+- browser clients can run JavaScript and WASM
+- operators configure reverse proxy, filesystem permissions, and logs appropriately
 
-**Tools:** `curl`, `requests`, `scrapy`, simple HTTP clients.  
-**Capability:** No browser environment. Cannot execute JavaScript or WASM.  
-**ChronoSeal response:** Session never initialises. No `session_id` is ever
-presented to `/hb`. Content gated behind session validation is never served.
+ChronoSeal does not assume:
 
-### Level 2 — Headless Browser Operator
+- the browser is honest
+- WASM is a secure enclave
+- mouse data proves human presence
+- fingerprint values are unforgeable
+- attackers cannot run a full browser
 
-**Tools:** Playwright, Puppeteer, Selenium, undetected-chromedriver.  
-**Capability:** Full browser environment. Can execute JavaScript and WASM.
-Cannot easily synthesise realistic mouse entropy or maintain hash chain state
-across concurrent sessions.  
-**ChronoSeal response:** Mouse entropy validation rejects absent or synthetic
-movement. Hash chain requires per-session state synchronisation. Scaling to
-hundreds of concurrent sessions requires proportional infrastructure.
+## Attacker Levels
 
-### Level 3 — Stealth Automation
+### Level 1: Commodity HTTP Client
 
-**Tools:** Puppeteer Stealth, rebrowser-patches, custom CDP clients with
-evasion patches.  
-**Capability:** Patches `navigator.webdriver`, spoofs browser fingerprints,
-can inject synthetic mouse events. May partially pass behavioral checks.  
-**ChronoSeal response:** Ed25519 signature over the full payload (including
-behavioral state and VM execution result) means the attacker must also
-correctly execute the WASM program and maintain chain continuity. The private
-key is generated fresh per page load and never exposed — it cannot be
-extracted from a legitimate session and reused.
+Examples:
 
-### Level 4 — Sophisticated Adversary
+- `curl`
+- `requests`
+- scraper scripts without browser or WASM execution
 
-**Tools:** Full browser farm with real input devices, WASM reverse engineering,
-custom chain maintenance infrastructure.  
-**Capability:** Can pass all current ChronoSeal checks given sufficient
-engineering effort.  
-**ChronoSeal response:** Significantly increases operational cost. A browser
-farm with real input devices costs orders of magnitude more than a commodity
-scraper fleet. ChronoSeal is not designed to stop this attacker — no client-
-side protection can.
+Expected result:
 
----
+- cannot produce valid signatures
+- cannot maintain hash-chain state
+- cannot execute mutation preview
+- cannot produce accepted heartbeats
+
+### Level 2: Basic Headless Browser
+
+Examples:
+
+- Playwright
+- Puppeteer
+- Selenium
+
+Expected result:
+
+- can load JavaScript and WASM
+- must preserve keypair, hash chain, salt, VM, and mutation state
+- must generate plausible timing and mouse event windows
+- silent rejection complicates debugging and scaling
+
+### Level 3: Stealth Automation
+
+Examples:
+
+- patched browser runtime
+- synthetic event generation
+- custom protocol client with WASM or Rust reimplementation
+
+Expected result:
+
+- can attempt full protocol implementation
+- must still match canonical signing, hash progression, mutation parity, and timing
+- must handle changing server-issued mutation programs
+- receives limited failure feedback
+
+### Level 4: Resourced Browser Farm
+
+Examples:
+
+- real browsers
+- realistic input devices
+- human-assisted workflows
+- distributed session management
+
+Expected result:
+
+- ChronoSeal raises cost and complexity
+- ChronoSeal does not claim complete prevention
+- additional application-level controls are required
 
 ## Attack Vectors and Mitigations
 
-### Replay Attack
+### Replay
 
-**Attack:** Capture a valid heartbeat payload and retransmit it.  
-**Mitigation:**
-- Timestamp window (±30 seconds): replayed payloads are rejected after 30s.
-- Hash chain: each heartbeat must present `H(n-1)` matching the server's
-  stored state. A replayed heartbeat presents a stale hash that no longer
-  matches after one successful heartbeat has advanced the chain.
+Attack: resend a previously accepted heartbeat.
+
+Mitigations:
+
+- stored `last_hash` must match request `prev_hash`
+- accepted heartbeats rotate salt
+- mutation step advances after acceptance
+- timestamp drift is bounded
 
 ### Signature Forgery
 
-**Attack:** Construct a valid-looking heartbeat payload without the private key.  
-**Mitigation:** Ed25519 with 128-bit security. The private key is generated
-inside WASM `thread_local` memory, never serialised, never passed to
-JavaScript, never transmitted. Forgery requires breaking Ed25519 or
-extracting the key from WASM memory — neither is practical.
+Attack: submit a heartbeat without the browser session private key.
 
-### Key Extraction
+Mitigations:
 
-**Attack:** Inspect WASM linear memory to extract the private signing key.  
-**Mitigation:** The key is stored in a Rust `thread_local! { RefCell<Option<SigningKey>> }`.
-It has no exported symbol and is not referenced by any exported WASM function
-that returns raw memory. An attacker with full DevTools access to the WASM
-memory can extract it from one session, but it is useless for other sessions
-(fresh keypair per page load) and expires with the session.
+- Ed25519 signature over canonical payload
+- public key registered during `/init`
+- signature verified on every heartbeat
+- signature covers mutation step and gene commitment
 
-### Hash Chain Forgery
+### Hash-Chain Desynchronization
 
-**Attack:** Compute a valid `H(n)` without the server-side salt.  
-**Mitigation:** Each chain link incorporates `saltₙ₋₁`, which is a 16-byte
-random value known only to the server and returned (once) in the heartbeat
-response. An attacker cannot compute `H(n+1)` without first receiving
-`saltₙ` from a successful heartbeat response, which requires a valid signature
-and all other checks to pass.
+Attack: submit a heartbeat from stale client state.
 
-### Session Hijacking
+Mitigations:
 
-**Attack:** Steal a `session_id` and use it from a different client.  
-**Mitigation:** `session_id` alone is insufficient — the attacker also needs
-the private key (to produce valid signatures) and the current chain state
-(to present the correct `prev_hash`). All three are required simultaneously.
+- server compares request `prev_hash` to stored `last_hash`
+- server computes the next hash only after all validation passes
+- rejected heartbeats do not advance server state
 
-### Enumeration of Validation Rules
+### Mutation Tampering
 
-**Attack:** Send malformed heartbeats and analyse error responses to map
-validation logic.  
-**Mitigation:** All failure paths return `{"status":"ok"}` with no `next_salt`.
-There is no error code, no error message, and no status difference between
-a rate limit hit, an invalid signature, a broken chain, and a behavioral
-rejection.
+Attack: forge or skip synthetic gene mutations.
 
-### DoS via Session Flooding
+Mitigations:
 
-**Attack:** Open thousands of sessions to exhaust the rate limiter's HashMap
-memory.  
-**Mitigation:** Rate limiter entries are evicted every 60 seconds by the
-cleanup task. Each entry is a small `(u32, Instant)` tuple; even at 100,000
-concurrent fake sessions, the HashMap occupies roughly 10–15 MB, which is
-well within normal server memory budgets. Sessions themselves expire after 30
-minutes of inactivity and are purged from SQLite.
+- server stores the pending mutation program
+- request must include the expected `mutation_step`
+- server applies the mutation independently
+- commitment includes candidate gene state, `session_id`, and step
+- mismatch causes silent rejection
 
-### Clock Manipulation
+### Session Identifier Theft
 
-**Attack:** Manipulate the client's `Date.now()` to bypass the timestamp
-window.  
-**Mitigation:** The timestamp is included in the signed payload. Manipulating
-it requires also forging the signature. The server validates against its own
-clock — client-side clock manipulation cannot help without the private key.
+Attack: reuse a stolen `session_id`.
 
-### Synthetic Mouse Events
+Mitigations:
 
-**Attack:** Inject programmatic `mousemove` events via `dispatchEvent` or
-CDP input simulation.  
-**Mitigation:** Synthetic events often fail the pause check (no natural dwell
-periods), produce unrealistically uniform speed profiles, or fail the minimum
-distance threshold. Generating convincingly human mouse traces at scale
-requires either real input devices or sophisticated probabilistic models —
-both significantly increase operational cost.
+- `session_id` alone is insufficient
+- attacker also needs current private key, hash state, salt, mutation step, and mutation state
+- stale attempts fail after the real session advances
 
----
+### Failure Oracle Probing
 
-## What ChronoSeal Does Not Protect Against
+Attack: send malformed requests and inspect responses to infer validation rules.
 
-| Limitation | Explanation |
-|---|---|
-| Real browsers with real users acting as bots | A human operating a browser manually is indistinguishable from a legitimate visitor. ChronoSeal cannot address this. |
-| Server-side vulnerabilities | ChronoSeal is a client attestation layer. It does not protect the server from injection, authentication bypass, or other backend vulnerabilities. |
-| Highly resourced nation-state actors | Out of scope for a client-side protection layer. |
-| Content visible before session establishment | If the protected content is rendered before the first heartbeat, it can be scraped without a session. Gate content on session validity server-side. |
-| Perfect bot prevention | No client-side mechanism can be. WASM can be reverse engineered. ChronoSeal raises cost, not an impenetrable barrier. |
+Mitigations:
 
----
+- heartbeat semantic failures return `200 OK` with `{"status":"ok"}`
+- accepted heartbeats are distinguished only by next-state fields
+- detailed validation errors are not returned to the client
 
-## Operational Security Notes
+### Storage Tampering
 
-### Log Level
+Attack: alter persisted session state.
 
-Do not run with `RUST_LOG=debug` in production. The debug log includes
-`session_id` values, which are sensitive identifiers. Use `warn` or `info`.
+Mitigations:
 
-### CORS Policy
+- run the daemon under a dedicated user
+- restrict SQLite database permissions
+- protect Valkey behind trusted network boundaries
+- use normal host hardening and backups where persistence matters
 
-The default `CorsLayer::permissive()` is suitable for development only.
-In production, restrict allowed origins to your own domain:
+Storage is trusted. If an attacker can modify storage, they can affect session continuity.
 
-```rust
-CorsLayer::new()
-    .allow_origin("https://your.domain.com".parse::<HeaderValue>().unwrap())
-    .allow_methods([Method::POST])
-    .allow_headers([header::CONTENT_TYPE])
-```
+## Behavioral Checks
 
-### TLS
+ChronoSeal validates:
 
-Serve exclusively over TLS 1.3. The heartbeat payload contains timestamps
-and behavioral signals. While each payload is signed and cannot be forged,
-plaintext transmission leaks behavioral patterns and timing information that
-could assist a sophisticated attacker.
+- minimum event count
+- minimum movement distance
+- maximum average speed
+- pause count
+- timestamp drift
+- basic fingerprint field ranges
 
-### In-Memory SQLite
+These checks are cost signals. They are not proof of humanity and should not be the only security layer for high-risk actions.
 
-All session state is lost on server restart. This is intentional — there is
-no persistent state to steal. Clients transparently re-initialise. If your
-deployment restarts frequently (e.g. rolling deploys), sessions will be lost
-more often; tune `HEARTBEAT_MIN_INTERVAL_MS` and `EXPIRATION_MINUTES`
-accordingly so clients recover quickly.
+## Privacy Constraints
 
----
+ChronoSeal intentionally avoids:
 
-## Security Disclosure
+- persistent user identifiers
+- browser history collection
+- device fingerprint databases
+- cross-session identity graphs
+- long-term behavioral profiles
 
-See [SECURITY.md](../SECURITY.md) for the vulnerability disclosure policy
-and contact details.
+Session data is short-lived by default. Persistent storage is operator-selected through `sqlite-in-disk` or `valkey`.
+
+## Limitations
+
+ChronoSeal does not protect against:
+
+- real users intentionally automating or abusing access
+- complete browser farms with realistic input
+- compromised server hosts
+- tampered storage
+- server-side application vulnerabilities
+- credential theft outside ChronoSeal
+- policy decisions that require identity, risk scoring, or business context
+
+## Operational Security
+
+Recommended:
+
+- serve all traffic over HTTPS
+- keep `/init` and `/hb` same-origin with protected content when possible
+- run behind a reverse proxy
+- keep debug logs disabled in production
+- protect storage and log directories
+- monitor health and metrics
+- use `sqlite-in-memory` for ephemeral sessions
+- use `sqlite-in-disk` or `valkey` only when persistence is required
+
+## Disclosure
+
+See [../SECURITY.md](../SECURITY.md) for the vulnerability disclosure policy.

@@ -5,19 +5,19 @@
 </p>
 
 <p align="center">
-  <strong>Cryptographic attestation daemon and anti-automation framework.</strong>
+  <strong>Unix-native cryptographic attestation daemon for browser session continuity.</strong>
 </p>
 
 <p align="center">
-  Privacy-preserving • Unix-native • Lightweight • WASM-powered
+  Privacy-first | Deterministic WASM parity | Silent rejection | Low overhead
 </p>
 
 <p align="center">
   <a href="https://github.com/thakares/chronoseal-rs/blob/main/LICENSE">
-  <img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="License: MIT OR Apache-2.0">
-</a>
+    <img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="License: MIT OR Apache-2.0">
+  </a>
   <a href="https://github.com/thakares/chronoseal-rs">
-    <img src="https://img.shields.io/badge/rust-stable%20%E2%89%A5%201.87-orange.svg" alt="Rust stable ≥ 1.87">
+    <img src="https://img.shields.io/badge/rust-stable%20%E2%89%A5%201.87-orange.svg" alt="Rust stable >= 1.87">
   </a>
   <a href="https://github.com/thakares/chronoseal-rs/blob/main/docs/REFRACTORING-v0.6.0.md">
     <img src="https://img.shields.io/badge/version-v0.6.0-green.svg" alt="v0.6.0">
@@ -27,759 +27,722 @@
 
 ---
 
-ChronoSeal is a lightweight cryptographic attestation daemon designed to raise the operational cost of browser automation, scraping, replay attacks, and synthetic interaction.
+ChronoSeal is a Linux-native cryptographic attestation service for browser session continuity and anti-automation defense. It runs as a small daemon, serves a browser WASM runtime, and validates signed heartbeat requests through deterministic server/client state progression.
 
-Instead of relying on:
+The core idea is simple: a real browser session should be able to keep advancing a private cryptographic state, a hash chain, and a deterministic synthetic gene mutation chain. Basic HTTP clients, stale replay attempts, and incomplete automation should fail without receiving a useful failure reason.
 
-* CAPTCHA systems
-* invasive browser fingerprinting
-* telemetry-heavy tracking
-* persistent identifiers
+ChronoSeal is a cost-raising attestation layer. It is not a CAPTCHA replacement, identity provider, fingerprinting product, or perfect bot blocker.
 
-ChronoSeal establishes a continuous cryptographic proof-of-runtime continuity using:
+## Contents
 
-* WASM execution
-* chained cryptographic heartbeats
-* behavioral entropy validation
-* ephemeral attestation state
+- [Features](#features)
+- [How It Works](#how-it-works)
+- [Repository Layout](#repository-layout)
+- [Quick Start](#quick-start)
+- [Build From Source](#build-from-source)
+- [Run Locally](#run-locally)
+- [Install as a Service](#install-as-a-service)
+- [Docker](#docker)
+- [CLI Reference](#cli-reference)
+- [Configuration](#configuration)
+- [HTTP API](#http-api)
+- [Browser Integration](#browser-integration)
+- [Storage Backends](#storage-backends)
+- [Operations](#operations)
+- [Security Model](#security-model)
+- [Development](#development)
+- [Troubleshooting](#troubleshooting)
+- [Further Reading](#further-reading)
+- [License](#license)
 
-while remaining completely invisible and frictionless to legitimate human users.
+## Features
 
-v0.6.0 adds a deterministic synthetic gene mutation chain (hybrid `Vec<u8>` gene + bounded environment records) to strengthen anti-replay continuity with server/WASM parity.
-See [docs/REFRACTORING-v0.6.0.md](docs/REFRACTORING-v0.6.0.md) for the full refactoring details.
+- Native Unix daemon with `systemd` service support.
+- Axum-based HTTP service exposing `/init`, `/hb`, `/health`, `/metrics`, and `/stats`.
+- Rust/WASM browser runtime for key generation, signing, VM execution, and mutation preview.
+- Deterministic Synthetic Gene Mutation Engine shared by the server and WASM crates.
+- Ed25519 signatures over canonical heartbeat payloads.
+- Blake3 hash chain continuity across accepted heartbeats.
+- Silent rejection semantics: invalid heartbeats still return `{"status":"ok"}`.
+- Configurable behavioral trust checks for mouse movement, pauses, timing, and browser signals.
+- Runtime storage abstraction with `sqlite-in-memory`, `sqlite-in-disk`, and `valkey` modes.
+- CLI-first lifecycle, status, health, metrics, stats, config validation, key generation, and shell completions.
+- Privacy-oriented design based on ephemeral session state rather than long-term identity tracking.
 
----
+## How It Works
 
-# Features
+ChronoSeal creates a short-lived browser attestation session and advances it through signed heartbeats.
 
-* CLI-first Unix-native architecture
-* Rich operational subcommands
-* Machine-readable JSON/YAML outputs
-* Hardened systemd integration
-* Graceful shutdown and signal handling
-* One-line installation workflow
-* Prometheus-compatible metrics
-* WASM-based client runtime
-* Ed25519 + Blake3 cryptographic chaining
-* Behavioral entropy validation
-* Randomized stack-machine verification
-* Deterministic synthetic gene mutation chain
-* Server/WASM mutation parity checks
-* Silent rejection model
-* SQLite-backed ephemeral sessions
-* Configurable runtime DB backend selection (`db_type`)
-* Connection-pooled runtime architecture
-* Lightweight deployment footprint
-* Docker and native deployment support
-* Adaptive trust scoring
-* GPLv3 licensed
+1. The browser loads the generated WASM package from `frontend/pkg`.
+2. The WASM runtime generates an Ed25519 keypair and returns the public key to JavaScript.
+3. The browser calls `POST /init` with the public key.
+4. The server creates a session and returns:
+   - `session_id`
+   - initial salt
+   - initial hash chain head
+   - VM opcode program
+   - gene size
+   - mutation step
+   - mutation order
+   - heartbeat timing bounds
+5. For each heartbeat, the browser:
+   - executes the VM opcode program
+   - collects entropy and browser signal data
+   - previews the next synthetic gene commitment in WASM
+   - signs the canonical heartbeat payload
+   - posts the request to `POST /hb`
+6. The server validates:
+   - session existence and expiration
+   - rate limit
+   - timestamp drift
+   - Ed25519 signature
+   - hash chain continuity
+   - behavioral trust checks
+   - mutation step
+   - gene commitment parity
+7. If the heartbeat is accepted, the server advances session state and returns the next salt and mutation order.
+8. If the heartbeat is rejected, the server returns only `{"status":"ok"}`.
 
----
+The silent failure model deliberately avoids exposing which validation failed.
 
-# Quick Start
+## Repository Layout
 
-## Install
+```text
+.
+├── Cargo.toml                 # Rust workspace
+├── server/                    # chronoseal daemon and CLI
+├── shared/                    # shared protocol, gene model, mutation engine
+├── wasm/                      # WASM runtime crate
+├── frontend/                  # static browser integration files
+├── docs/                      # architecture, API, deployment, threat model
+├── scripts/                   # build, install, release, dev helpers
+├── chronoseal.service         # systemd unit
+├── Dockerfile                 # container image
+└── docker-compose.yml         # local container orchestration
+```
+
+Workspace members:
+
+- `chronoseal-server`: daemon binary crate. Binary name: `chronoseal`.
+- `shared`: common cryptographic and mutation logic used by server and WASM.
+- `chronoseal-wasm`: browser runtime compiled with `wasm-pack`.
+
+## Quick Start
+
+For a full native install:
 
 ```bash
 sudo bash scripts/install.sh
 ```
 
-## Check Status
+Check the daemon:
 
 ```bash
 chronoseal status --format json
-```
-
-## Health Probe
-
-```bash
 chronoseal health
-```
-
-## View Metrics
-
-```bash
 chronoseal metrics
-```
-
-## View Logs
-
-```bash
 sudo journalctl -u chronoseal -f
 ```
 
----
-
-# CLI
+For local development without installing:
 
 ```bash
-chronoseal --help
+bash scripts/build.sh
+cargo run -p chronoseal-server --bin chronoseal -- run \
+  --bind 127.0.0.1:3000 \
+  --frontend-dir frontend
 ```
 
-## Available Commands
+Then open:
 
-| Command      | Description                                |
-| ------------ | ------------------------------------------ |
-| `run`        | Run the ChronoSeal daemon                  |
-| `status`     | Report daemon status                       |
-| `health`     | Perform daemon health probe                |
-| `config`     | Validate and print effective configuration |
-| `generate`   | Generate operational material              |
-| `db-type`    | List database backend support status       |
-| `metrics`    | Output Prometheus metrics                  |
-| `stats`      | Print runtime statistics                   |
-| `completion` | Generate shell completions                 |
-| `version`    | Print version/build information            |
+```text
+http://127.0.0.1:3000
+```
 
----
+## Build From Source
 
-## Example
+### Requirements
+
+| Tool | Minimum | Purpose |
+|---|---:|---|
+| Rust | 1.87 stable | Build server, shared crate, and tests |
+| wasm-pack | 0.13 | Build browser WASM package |
+| wasm32 target | current stable | WASM compilation target |
+| systemd | 248+ | Optional native service management |
+| Docker | 24.x | Optional container workflow |
+| Docker Compose | 2.x | Optional local orchestration |
+
+Install the WASM target and `wasm-pack`:
 
 ```bash
-chronoseal status --format json
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack
 ```
 
-```json
-{
-  "running": true,
-  "healthy": true,
-  "bind": "0.0.0.0:3000",
-  "pid_file": "/run/chronoseal.pid",
-  "pid": 79459
-}
+Build everything needed for the browser and server:
+
+```bash
+bash scripts/build.sh
 ```
 
----
+That script:
 
-# How It Works
+1. Builds `wasm/` with `wasm-pack build --target web --release`.
+2. Replaces `frontend/pkg` with the generated WASM package.
+3. Builds the `chronoseal` release binary.
 
-ChronoSeal establishes a continuous cryptographic proof-of-presence for browser sessions.
+Manual build:
 
-The system is inspired by heartbeat validation models used in embedded and distributed systems.
+```bash
+wasm-pack build wasm --target web --release
+rm -rf frontend/pkg
+mv wasm/pkg frontend/pkg
 
-## Session Flow
+cargo build -p chronoseal-server --bin chronoseal --release
+```
+
+The binary is written to:
 
 ```text
-Browser                                    Server
-  │                                           │
-  │  WASM loads, generates Ed25519 keypair    │
-  │  Private key never leaves WASM memory     │
-  │                                           │
-  ├──── POST /init  { public_key } ──────────►│
-  │◄─── { session_id, salt, opcodes_b64, H0,  │
-  │     mutation_step, mutation_order_b64 } ──┤
-  │                                           │
-  │ Every 12–25s (randomized):                │
-  │  ┌─ Collect behavioral entropy            │
-  │  ├─ Execute verification VM opcodes       │
-  │  ├─ Preview mutation commitment           │
-  │  ├─ Attach mutation_step + commitment     │
-  │  ├─ Advance Blake3 hash chain             │
-  │  └─ Sign payload using Ed25519            │
-  │                                           │
-  ├──── POST /hb  { signed_payload } ────────►│
-  │◄─── { status, next_salt,                  │
-  │     next_mutation_step,                   │
-  │     next_mutation_order_b64 } ────────────┤
-  │                                           │
-  │ Invalid sessions silently rejected        │
-  │ (`status=ok` without next_* fields)       │
+target/release/chronoseal
 ```
 
-The server validates:
+## Run Locally
 
-* signature authenticity
-* heartbeat continuity
-* replay resistance
-* mutation step parity
-* mutation commitment parity
-* behavioral entropy
-* timestamp validity
-* fingerprint sanity
+Run the daemon directly from Cargo:
 
----
-
-# Security Model
-
-## What ChronoSeal Protects Against
-
-| Threat                   | Mechanism                             |
-| ------------------------ | ------------------------------------- |
-| Replay attacks           | Blake3 chained heartbeat continuity   |
-| Signature forgery        | Ed25519 keypair generated inside WASM |
-| Session cloning          | Ephemeral session-bound keypairs      |
-| Static scraping          | Runtime participation requirements    |
-| Naive browser automation | Behavioral continuity validation      |
-| Timestamp replay         | Drift-window enforcement              |
-| Session flooding         | Per-session rate limiting             |
-| Mutation tampering       | Server-side commitment parity checks  |
-
----
-
-## Silent Rejection Model
-
-ChronoSeal intentionally avoids explicit rejection semantics.
-
-Invalid sessions may still receive:
-
-```json
-{ "status": "ok" }
+```bash
+cargo run -p chronoseal-server --bin chronoseal -- run \
+  --bind 127.0.0.1:3000 \
+  --frontend-dir frontend
 ```
 
-This prevents:
+Probe it:
 
-* oracle-style probing
-* protocol learning
-* easy automation tuning
-* behavioral enumeration
-
----
-
-## What ChronoSeal Does Not Claim
-
-ChronoSeal is a cost-raising mechanism, not an impenetrable barrier.
-
-A sufficiently motivated adversary with:
-
-* real browsers
-* genuine input devices
-* enough reverse engineering effort
-
-can eventually bypass the system.
-
-The goal is to make automation:
-
-* expensive
-* operationally complex
-* difficult to scale
-* harder to replay deterministically
-
----
-
-# Architecture
-
-```text
-chronoseal-rs/
-├── shared/          Shared types, hash chain, gene + mutation engine
-├── server/          Axum HTTP daemon
-│   ├── routes/      API routes
-│   ├── session.rs   Session lifecycle + mutation parity checks
-│   ├── crypto.rs    Ed25519 verification
-│   ├── trust.rs     Behavioral validation
-│   ├── fingerprint/ Browser sanity validation
-│   ├── vm.rs        Random opcode generator
-│   ├── ratelimit.rs Token bucket limiter
-│   ├── cleanup.rs   Session expiration lifecycle
-│   └── metrics.rs   Prometheus metrics
-├── wasm/            Rust → WASM runtime
-│   ├── crypto.rs    Signing + hash chaining
-│   ├── vm.rs        Stack-machine executor
-│   └── vm_extensions.rs Gene mutation preview/commit
-├── frontend/        Lightweight JS integration
-├── scripts/         Build/install/dev scripts
-└── docs/            Project documentation
+```bash
+curl http://127.0.0.1:3000/health
+curl http://127.0.0.1:3000/stats
+curl http://127.0.0.1:3000/metrics
 ```
 
----
+Use the CLI wrappers:
 
-# Stack Machine
-
-ChronoSeal includes a lightweight randomized stack-machine execution engine.
-
-The server generates a randomized opcode program during session initialization.
-
-The client executes this program on every heartbeat and includes the resulting stack state in the signed payload.
-
-This makes heartbeat payloads structurally dynamic.
-
-## Supported Opcodes
-
-| Opcode | Mnemonic | Effect                  |
-| ------ | -------- | ----------------------- |
-| `0x00` | PUSH     | Push literal            |
-| `0x01` | ADD      | Wrapping addition       |
-| `0x02` | SUB      | Wrapping subtraction    |
-| `0x03` | MUL      | Wrapping multiplication |
-| `0x04` | XOR      | Bitwise XOR             |
-| `0x05` | AND      | Bitwise AND             |
-| `0x06` | OR       | Bitwise OR              |
-| `0x07` | ROT      | Rotate left             |
-| `0x08` | NOT      | Unary inversion         |
-| `0x09` | HASH     | Blake3 stack hash       |
-
-## Mutation Opcodes (v0.6.0)
-
-| Opcode | Mnemonic             | Effect |
-| ------ | -------------------- | ------ |
-| `0x23` | GENE_LOAD            | Push `gene[idx]` |
-| `0x24` | GENE_STORE           | Pop and store at `gene[idx]` |
-| `0x25` | MUTATE_POINT         | Apply wrapping byte delta at index |
-| `0x26` | INSERT               | Insert popped byte at index |
-| `0x27` | DELETE               | Delete byte at index and push removed value |
-| `0x28` | TRANSCRIBE           | Push deterministic transcription hash |
-| `0x29` | APPLY_MUTAGEN        | Mix environment symbol quantity into gene byte |
-| `0x2A` | FINALIZE_GENE_HASH   | Push commitment-derived `u32` |
-| `0x2B` | CONSUME              | Pop amount, subtract environment quantity |
-| `0x2C` | PRODUCE              | Pop amount, add environment quantity |
-
----
-
-# Hash Chain
-
-ChronoSeal uses Blake3 chained continuity validation.
-
-## Initial Hash
-
-```text
-H(0) = Blake3( session_id ║ public_key ║ salt₀ )
+```bash
+cargo run -p chronoseal-server --bin chronoseal -- status --bind 127.0.0.1:3000
+cargo run -p chronoseal-server --bin chronoseal -- health --bind 127.0.0.1:3000
+cargo run -p chronoseal-server --bin chronoseal -- stats --bind 127.0.0.1:3000 --format json
 ```
 
-## Heartbeat Progression
+## Install as a Service
 
-```text
-H(n) = Blake3(
-    saltₙ₋₁ ║
-    H(n-1) ║
-    timestamp ║
-    Blake3(entropy_json) ║
-    Blake3(stack_json)
-)
-```
-
-Each heartbeat depends on:
-
-* prior continuity
-* prior server-issued salt
-* behavioral entropy
-* VM execution result
-* timestamp progression
-
----
-
-# Signature Canonicalization
-
-Heartbeat payloads are serialized into canonical key order before signing.
-
-The server reconstructs payloads identically before:
-
-* Ed25519 verification
-* hash progression validation
-
-This prevents:
-
-* serialization inconsistencies
-* ambiguous signing layouts
-* malformed payload tricks
-
----
-
-# SQLite Schema
-
-```sql
-CREATE TABLE IF NOT EXISTS sessions (
-    session_id            TEXT     PRIMARY KEY,
-    public_key            BLOB     NOT NULL,
-    salt                  BLOB     NOT NULL,
-    last_hash             BLOB     NOT NULL,
-    chain_length          INTEGER  NOT NULL DEFAULT 1,
-    created_at            INTEGER  NOT NULL,
-    last_seen             INTEGER  NOT NULL,
-    expires_at            INTEGER  NOT NULL,
-    gene                  BLOB     NOT NULL DEFAULT X'',
-    environment           BLOB     NOT NULL DEFAULT X'',
-    pending_mutation      BLOB     NOT NULL DEFAULT X'',
-    pending_mutation_step INTEGER  NOT NULL DEFAULT 0
-);
-```
-
-ChronoSeal intentionally uses ephemeral session persistence.
-
-Session continuity is designed to reset transparently.
-
----
-
-# v0.6.0 — Synthetic Gene Mutation System
-
-## Overview & Motivation
-
-ChronoSeal v0.6.0 introduces a synthetic mutation chain model to strengthen attestation liveness and anti-replay guarantees while preserving privacy-first behavior. The core model combines:
-
-* a primary byte-oriented gene buffer (`Vec<u8>`), and
-* a bounded secondary environment map (`Vec<(u16 symbol, u32 quantity)>`).
-
-Each heartbeat now carries deterministic mutation progression evidence (`mutation_step`, `gene_commitment`) that is validated server-side against the exact server-issued mutation order. This design increases attacker workload by coupling cryptographic chain continuity with stateful deterministic mutation parity.
-
-## Architectural Goals
-
-1. Keep runtime behavior deterministic across server and WASM execution.
-2. Preserve ephemerality and low operational complexity.
-3. Minimize additional latency on the heartbeat path.
-4. Improve protocol resistance against replay and mutation tampering.
-5. Maintain a maintainable codebase with explicit invariants and focused modules.
-
-## Design Decisions
-
-**Shared mutation engine** — Mutation opcode semantics live in `shared/src/vm_extensions.rs` to guarantee server/client parity from one implementation.
-
-**Deterministic gene commitment** — A domain-separated BLAKE3 commitment (`chronoseal/gene/v1`) binds both gene bytes and sorted environment records.
-
-**Bounded mutation complexity** — Mutation program length is capped (`MAX_MUTATION_PROGRAM_BYTES`) and environment cardinality is capped (`MAX_ENV_RECORDS`).
-
-**Strict validation on ingest** — Environment payloads are validated for sortedness, uniqueness, non-zero quantity, and length constraints.
-
-**Protocol-level mutation handshake** — `InitResponse` and `Heartbeat` payloads now include mutation step/order and commitment fields.
-
-**DB backend control via `db_type`** — Server CLI/config now supports:
-
-* `sqlite-in-memory` (default)
-* `sqlite-in-disk` (active; uses `db_path`)
-* `valkey` (active compatibility mode; currently falls back to in-memory)
-
-## Implementation
-
-1. Gene model + deterministic commitment in `shared/gene.rs`.
-2. v0.6.0 mutation opcode set in shared VM extensions.
-3. Mutation state persisted per session (`gene`, `environment`, `pending_mutation`, `pending_mutation_step`).
-4. Protocol schema extended for mutation fields in init/heartbeat exchange.
-5. Mutation step + commitment parity validated before accepting heartbeat updates.
-6. WASM preview/commit mutation lifecycle mirrors server behavior.
-7. `db_type` CLI/config flow and runtime backend initialization strategy.
-8. Migration-safe schema extension (column existence checks + index creation).
-
-## Testing Strategy
-
-ChronoSeal v0.6.0 test coverage is organized across unit, integration, and randomized/fuzz-style validation.
-
-**Unit, integration, and property tests:**
-
-* Unit tests for gene invariants and encoding/decoding.
-* Unit tests for every mutation opcode with stack-effect assertions.
-* Integration tests for full session lifecycle and heartbeat acceptance/rejection paths.
-* Table-driven randomized tests and fuzz-style random bytecode tests to validate deterministic failure/success symmetry.
-
-**Server-client parity testing:**
-
-* Shared opcode engine parity tests across seeded mutation sequences.
-* Multi-step mutation chain test (`test_mutation_chain`) asserting identical server/client final state.
-* 10+ heartbeat deterministic simulation tests in session integration suite.
-
-**Evasion / attack simulation testing:**
-
-* Replay attack simulation.
-* Mutation step mismatch rejection.
-* Mutation commitment tampering rejection.
-* Malformed server mutation payload rejection.
-* Stack underflow / unknown opcode / truncated program rejection.
-
-**Performance regression testing:**
-
-* Bounded execution checks through capped program size and bounded record counts.
-* Timing smoke regression test for mutation execution loops.
-* End-to-end heartbeat test coverage to detect behavior regressions on hot paths.
-
-## Security Analysis
-
-**Replay resistance** — Heartbeats are now tied to both chain hash and mutation step progression.
-
-**Mutation tampering resistance** — Server recomputes candidate gene state from authoritative pending mutation program and rejects commitment mismatch.
-
-**Protocol ambiguity reduction** — Canonical signing payload includes mutation fields, reducing exploitable unsigned state.
-
-**Input hardening** — Program size limits, stack underflow checks, and strict environment decoding reduce parser abuse and malformed payload amplification.
-
-**Deterministic failure semantics** — Invalid mutation instructions fail predictably and symmetrically across server and WASM paths.
-
-## Performance Considerations
-
-* Mutation instructions are lightweight and mostly O(1); only `INSERT`/`DELETE` are O(n) but bounded by max gene size.
-* Environment operations use sorted-vector binary search with tight upper bound (`MAX_ENV_RECORDS`).
-* Commitment hashing is linear in gene size and record count, both bounded.
-* Shared engine avoids duplicate logic and divergence-induced debugging overhead.
-
-## Migration & Backward Compatibility
-
-* Schema migration is additive; new columns are created when missing.
-* Existing deployments without mutation fields require updated client+server pair for heartbeat compatibility.
-* `db_type` defaults to in-memory to preserve ephemeral behavior.
-* `sqlite-in-disk` is now directly usable via `db_path`.
-* `valkey` currently runs in compatibility mode (in-memory fallback) to avoid startup failure while preserving CLI contract.
-
-## Risks & Mitigations
-
-| Risk | Mitigation |
-| ---- | ---------- |
-| State divergence between server and client | Shared opcode engine + deterministic seeded parity tests + multi-heartbeat integration tests |
-| Mutation opcode abuse via malformed programs | Strict parsing, length caps, explicit underflow/unknown-opcode errors |
-| Performance regressions | Bounded structures, smoke timing tests, focused hot-path validation |
-| Backend confusion during `db_type` rollout | Explicit CLI command (`chronoseal db-type`), config output visibility, and clear runtime compatibility behavior |
-
----
-
-# Runtime Architecture
-
-## Server Runtime
-
-* Rust
-* Axum
-* Tokio
-* SQLite (`sqlite-in-memory` / `sqlite-in-disk`)
-* `db_type=valkey` compatibility mode (falls back to in-memory in v0.6.0)
-* `r2d2`
-* `thiserror`
-
-## Browser Runtime
-
-* Rust → WASM
-* Ed25519 signing
-* Blake3 chaining
-* Stack-machine execution
-
----
-
-# Deployment
-
-## Recommended Installation
+The installer builds the project, installs the binary, copies frontend assets, installs the `systemd` unit, and starts the service.
 
 ```bash
 sudo bash scripts/install.sh
 ```
 
-The installer:
+Installed paths:
 
-* creates `chronoseal` service user
-* builds release artifacts
-* installs frontend assets
-* deploys hardened systemd service
-* enables and starts daemon
+| Path | Purpose |
+|---|---|
+| `/usr/local/bin/chronoseal` | daemon and CLI binary |
+| `/opt/chronoseal/frontend` | static frontend assets copied by installer |
+| `/etc/systemd/system/chronoseal.service` | service unit |
+| `/run/chronoseal.pid` | default PID file |
 
----
-
-## Manual Installation
+Service commands:
 
 ```bash
-bash scripts/build.sh
-
-sudo cp target/release/chronoseal /usr/local/bin/
-sudo cp chronoseal.service /etc/systemd/system/
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now chronoseal
+sudo systemctl status chronoseal
+sudo systemctl restart chronoseal
+sudo systemctl disable --now chronoseal
+sudo journalctl -u chronoseal -f
 ```
 
----
-
 ## Docker
+
+Build and run with Compose:
 
 ```bash
 docker compose up -d --build
 ```
 
----
+The provided container exposes port `3000`.
 
-# Development
+```bash
+curl http://127.0.0.1:3000/health
+```
 
-## Full Build
+Important: the Dockerfile copies `frontend/` from the working tree. Build the WASM package into `frontend/pkg` before building the container if you need the browser runtime inside the image:
+
+```bash
+bash scripts/build.sh
+docker compose up -d --build
+```
+
+## CLI Reference
+
+Run:
+
+```bash
+chronoseal --help
+```
+
+Global options:
+
+| Option | Environment | Description |
+|---|---|---|
+| `--config <path>` | `CHRONOSEAL_CONFIG` | Explicit TOML config path |
+| `--format <text|json|yaml>` | - | Output format for machine-readable commands |
+| `--output <text|json|yaml>` | - | Alias for `--format` |
+| `--log <filter>` | `CHRONOSEAL_LOG` | Tracing filter, for example `info` or `chronoseal=debug` |
+
+Commands:
+
+| Command | Description |
+|---|---|
+| `chronoseal run` | Run the daemon |
+| `chronoseal status` | Check configured daemon reachability and PID state |
+| `chronoseal health` | Perform an HTTP health probe |
+| `chronoseal config check` | Validate and print effective configuration |
+| `chronoseal generate keypair` | Generate an Ed25519 keypair |
+| `chronoseal version` | Print version/build information |
+| `chronoseal db-type` | List database backend support status |
+| `chronoseal metrics` | Fetch Prometheus metrics from the running daemon |
+| `chronoseal stats` | Fetch service statistics from the running daemon |
+| `chronoseal completion <shell>` | Generate shell completions |
+
+Examples:
+
+```bash
+chronoseal run --bind 127.0.0.1:3000 --frontend-dir frontend
+chronoseal run --db-type sqlite-in-memory
+chronoseal status --format json
+chronoseal health --config /etc/chronoseal/config.toml
+chronoseal config check --output yaml
+chronoseal generate keypair --format json
+chronoseal completion bash > chronoseal.bash
+```
+
+## Configuration
+
+Configuration precedence:
+
+1. CLI flags
+2. `CHRONOSEAL_*` environment variables
+3. TOML config file
+4. built-in defaults
+
+Default config discovery:
+
+1. path from `CHRONOSEAL_CONFIG`, if it exists
+2. `/etc/chronoseal/config.toml`
+3. `$XDG_CONFIG_HOME/chronoseal/config.toml`
+4. `~/.config/chronoseal/config.toml`
+
+Example:
+
+```toml
+bind = "0.0.0.0:3000"
+db_type = "sqlite-in-memory"
+pid_file = "/run/chronoseal.pid"
+db_path = "/var/lib/chronoseal/chronoseal.sqlite"
+frontend_dir = "/usr/share/chronoseal/frontend"
+log_file = "/var/log/chronoseal/chronoseal.jsonl"
+
+heartbeat_min_interval_ms = 12000
+heartbeat_max_interval_ms = 25000
+expiration_minutes = 30
+rate_limit_count = 5
+rate_limit_window_secs = 10
+max_timestamp_drift_ms = 30000
+
+min_mouse_total_dist = 10.0
+max_mouse_avg_speed = 2.0
+min_pause_count = 1
+require_mouse_activity = true
+
+gene_size = 512
+mutation_rounds = 4
+```
+
+Common environment variables:
+
+| Variable | Description |
+|---|---|
+| `CHRONOSEAL_CONFIG` | Config file path |
+| `CHRONOSEAL_BIND` | Bind address, for example `127.0.0.1:3000` |
+| `CHRONOSEAL_DB_TYPE` | `sqlite-in-memory`, `sqlite-in-disk`, or `valkey` |
+| `CHRONOSEAL_DB_PATH` | SQLite database path |
+| `CHRONOSEAL_FRONTEND_DIR` | Static frontend directory served at `/` |
+| `CHRONOSEAL_PID_FILE` | PID file path |
+| `CHRONOSEAL_LOG` | Tracing filter |
+| `CHRONOSEAL_LOG_FILE` | Optional JSON log file |
+| `CHRONOSEAL_STATE_DIR` | Base state directory used for default `db_path` |
+| `CHRONOSEAL_HEARTBEAT_MIN_INTERVAL_MS` | Minimum accepted heartbeat interval |
+| `CHRONOSEAL_HEARTBEAT_MAX_INTERVAL_MS` | Maximum accepted heartbeat interval |
+| `CHRONOSEAL_EXPIRATION_MINUTES` | Session lifetime |
+| `CHRONOSEAL_RATE_LIMIT_COUNT` | Requests allowed in the rate-limit window |
+| `CHRONOSEAL_RATE_LIMIT_WINDOW_SECS` | Rate-limit window length |
+| `CHRONOSEAL_MAX_TIMESTAMP_DRIFT_MS` | Accepted client timestamp drift |
+| `CHRONOSEAL_MIN_MOUSE_TOTAL_DIST` | Minimum mouse movement distance |
+| `CHRONOSEAL_MAX_MOUSE_AVG_SPEED` | Maximum average mouse speed |
+| `CHRONOSEAL_MIN_PAUSE_COUNT` | Minimum detected pause count |
+| `CHRONOSEAL_REQUIRE_MOUSE_ACTIVITY` | Enable or disable mouse activity requirement |
+| `CHRONOSEAL_GENE_SIZE` | Synthetic gene buffer size |
+| `CHRONOSEAL_MUTATION_ROUNDS` | Mutation rounds per program |
+
+Validate configuration:
+
+```bash
+chronoseal config check --format yaml
+```
+
+## HTTP API
+
+ChronoSeal exposes a small HTTP surface:
+
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/init` | Start a browser attestation session |
+| `POST` | `/hb` | Submit a signed heartbeat |
+| `GET` | `/health` | Health probe |
+| `GET` | `/metrics` | Prometheus metrics |
+| `GET` | `/stats` | Runtime statistics |
+| `GET` | `/` | Static frontend files from `frontend_dir` |
+
+### `POST /init`
+
+Request:
+
+```json
+{
+  "public_key": "hex-encoded 32-byte Ed25519 verifying key"
+}
+```
+
+Response:
+
+```json
+{
+  "session_id": "64-char hex string",
+  "salt": "32-char hex string",
+  "opcodes_b64": "base64-encoded VM program",
+  "initial_hash": "64-char hex string",
+  "expires_at": 1234567890123,
+  "heartbeat_min_interval_ms": 12000,
+  "heartbeat_max_interval_ms": 25000,
+  "gene_size": 512,
+  "mutation_step": 1,
+  "mutation_order_b64": "base64-encoded mutation program"
+}
+```
+
+### `POST /hb`
+
+Request:
+
+```json
+{
+  "session_id": "64-char hex",
+  "prev_hash": "64-char hex",
+  "timestamp": 1234567890123,
+  "entropy_data": {
+    "events": [
+      { "x": 412.0, "y": 308.5, "t": 1234.567 }
+    ]
+  },
+  "stack_state": {
+    "stack": [2971406957, 1234567890],
+    "ip": 42
+  },
+  "fingerprint": {
+    "aspectRatio": "1.7777777778",
+    "devicePixelRatio": 2,
+    "hardwareConcurrency": 8
+  },
+  "mutation_step": 1,
+  "gene_commitment": "64-char hex",
+  "signature": "128-char hex"
+}
+```
+
+Accepted response:
+
+```json
+{
+  "status": "ok",
+  "next_salt": "32-char hex string",
+  "next_mutation_step": 2,
+  "next_mutation_order_b64": "base64-encoded mutation program"
+}
+```
+
+Rejected response:
+
+```json
+{
+  "status": "ok"
+}
+```
+
+Detailed API semantics are documented in [docs/API.md](docs/API.md).
+
+## Browser Integration
+
+The frontend imports the generated WASM module from `frontend/pkg`.
+
+```js
+import init, {
+  generate_keypair,
+  get_public_key,
+  sign_message,
+  compute_next_hash,
+  run_program,
+  init_gene_state,
+  preview_gene_commitment,
+  commit_gene_preview,
+  discard_gene_preview,
+  current_gene_commitment
+} from './pkg/chronoseal_wasm.js';
+```
+
+Call `await init()` before invoking exported functions.
+
+WASM exports:
+
+| Function | Purpose |
+|---|---|
+| `generate_keypair()` | Generate a browser-local Ed25519 keypair and return public key hex |
+| `get_public_key()` | Return current public key hex |
+| `sign_message(msg)` | Sign a canonical UTF-8 payload and return signature hex |
+| `compute_next_hash(prev, ts, entropy, stack, salt)` | Compute next Blake3 hash-chain value |
+| `run_program(b64)` | Execute a base64 VM program and return stack state |
+| `init_gene_state(gene_size)` | Initialize the synthetic gene buffer |
+| `preview_gene_commitment(order_b64, session_id, mutation_step, rounds)` | Preview next gene commitment |
+| `commit_gene_preview()` | Commit the previewed gene mutation after accepted heartbeat |
+| `discard_gene_preview()` | Discard previewed mutation after rejection or error |
+| `current_gene_commitment(session_id, mutation_step)` | Return current committed gene commitment |
+
+String-returning WASM functions return an empty string on error. Boolean-returning functions indicate success or failure directly.
+
+## Storage Backends
+
+Set storage mode with `db_type` or `CHRONOSEAL_DB_TYPE`.
+
+| Backend | Description |
+|---|---|
+| `sqlite-in-memory` | Default ephemeral session storage. State is lost on restart. |
+| `sqlite-in-disk` | SQLite database persisted at `db_path`. |
+| `valkey` | Valkey-compatible backend mode. |
+
+For Valkey mode, the server reads `CHRONOSEAL_VALKEY_ADDR` and defaults to `127.0.0.1:6666` when it is not set. If the Valkey connection fails, the current implementation falls back to in-memory SQLite and logs a warning.
+
+## Operations
+
+### Health
+
+```bash
+chronoseal health
+curl http://127.0.0.1:3000/health
+```
+
+### Status
+
+```bash
+chronoseal status --format json
+```
+
+### Metrics
+
+```bash
+chronoseal metrics
+curl http://127.0.0.1:3000/metrics
+```
+
+### Stats
+
+```bash
+chronoseal stats --format json
+curl http://127.0.0.1:3000/stats
+```
+
+### Logs
+
+```bash
+sudo journalctl -u chronoseal -f
+```
+
+Use `RUST_LOG=info` or `CHRONOSEAL_LOG=info` for normal production operation. Avoid debug logging in production because internal identifiers may appear in logs.
+
+### Reverse Proxy
+
+ChronoSeal should run behind TLS in production. Terminate HTTPS at a reverse proxy such as nginx, Caddy, HAProxy, or a cloud load balancer, then proxy to the local daemon.
+
+Example nginx location:
+
+```nginx
+location / {
+    proxy_pass         http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header   Host $host;
+    proxy_set_header   X-Real-IP $remote_addr;
+    proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+}
+```
+
+## Security Model
+
+ChronoSeal is designed to raise the cost of automation and replay attacks.
+
+It helps defend against:
+
+- replayed heartbeats
+- stale hash chain state
+- forged heartbeat signatures
+- mutation commitment tampering
+- session cloning using only a stolen `session_id`
+- simple scripted clients that do not run the WASM runtime
+- basic browser automation with weak interaction simulation
+
+It does not claim to stop:
+
+- real users intentionally acting as bots
+- fully resourced browser farms
+- attackers with complete control of a real browser and realistic input
+- server-side application vulnerabilities
+- account abuse outside ChronoSeal's attestation boundary
+- long-term identity or fraud decisions by itself
+
+Privacy posture:
+
+- Sessions are short-lived.
+- The private key is generated in the browser runtime and is not sent to the server.
+- ChronoSeal validates continuity and plausibility rather than creating persistent user identities.
+- Invalid heartbeats are rejected silently to reduce oracle feedback.
+
+Read the full model in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
+
+## Development
+
+Run the standard checks:
+
+```bash
+cargo fmt --check
+cargo check --workspace
+cargo test --workspace
+cargo clippy --workspace --all-targets -- -D warnings
+```
+
+Format:
+
+```bash
+cargo fmt
+```
+
+Build WASM during frontend/runtime changes:
+
+```bash
+wasm-pack build wasm --target web
+rm -rf frontend/pkg
+mv wasm/pkg frontend/pkg
+```
+
+Build release artifacts:
 
 ```bash
 bash scripts/build.sh
 ```
 
-## Development Mode
+Generate shell completion:
 
 ```bash
-bash scripts/dev.sh
+chronoseal completion bash > chronoseal.bash
+chronoseal completion zsh > _chronoseal
 ```
 
-## Direct Execution
+## Troubleshooting
+
+### Browser fails to load WASM
+
+Rebuild the WASM package and make sure `frontend/pkg/chronoseal_wasm.js` and the `.wasm` file exist:
 
 ```bash
-cargo run -p server -- run --bind 127.0.0.1:3000
+bash scripts/build.sh
 ```
 
----
+The `.wasm` file must be served as `application/wasm`. The built-in static file service handles this for normal ChronoSeal deployments.
 
-# Prerequisites
+### `chronoseal health` fails
 
-* Rust stable ≥ 1.87
-* `wasm-pack`
-* NodeJS (optional frontend tooling)
-
-Install `wasm-pack`:
+Check that the daemon is running and that the CLI is probing the correct bind address:
 
 ```bash
-cargo install wasm-pack
+sudo systemctl status chronoseal
+chronoseal health --bind 127.0.0.1:3000
+curl http://127.0.0.1:3000/health
 ```
 
-Build backend:
+### Heartbeats return only `{"status":"ok"}`
+
+That is the expected response for rejected heartbeats. Common causes include:
+
+- invalid signature
+- stale `prev_hash`
+- stale `mutation_step`
+- mismatched `gene_commitment`
+- timestamp drift beyond the configured window
+- insufficient mouse movement or pause data
+- rate limiting
+- expired session
+
+Use local development logs and tests to debug integration issues. Avoid debug logs in production.
+
+### SQLite disk mode cannot persist state
+
+Ensure the daemon user can create and write the configured database path:
 
 ```bash
-cargo run -p server --release
+sudo mkdir -p /var/lib/chronoseal
+sudo chown -R chronoseal:chronoseal /var/lib/chronoseal
 ```
 
-Build WASM:
+Use:
+
+```toml
+db_type = "sqlite-in-disk"
+db_path = "/var/lib/chronoseal/chronoseal.sqlite"
+```
+
+### Config changes do not apply
+
+Check precedence. CLI flags override environment variables, environment variables override config files, and config files override built-in defaults.
+
+Print the effective config:
 
 ```bash
-wasm-pack build wasm --target web --release
+chronoseal config check --format yaml
 ```
 
----
+## Further Reading
 
-# Configuration
+- [Architecture](docs/ARCHITECTURE.md)
+- [API Reference](docs/API.md)
+- [Deployment Guide](docs/DEPLOYMENT.md)
+- [Threat Model](docs/THREAT_MODEL.md)
+- [Design Philosophy](docs/DESIGN-PHILOSOPHY.md)
+- [Privacy Policy](docs/PRIVACY%20POLICY.md)
+- [WASM Build Guide](docs/WASM_BUILD.md)
+- [Refactoring v0.6.0](docs/REFRACTORING-v0.6.0.md)
+- [Contributing](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
 
-## Precedence
+## License
 
-```text
-CLI flags > CHRONOSEAL_* environment variables > config file > defaults
-```
+ChronoSeal is licensed under either of:
 
-## Default Config Locations
+- MIT, see [LICENSE](LICENSE)
+- Apache-2.0, see [LICENSE-APACHE](LICENSE-APACHE)
 
-```text
-/etc/chronoseal/config.toml
-$XDG_CONFIG_HOME/chronoseal/config.toml
-~/.config/chronoseal/config.toml
-```
-
-## Runtime State
-
-```text
-~/.local/state/chronoseal/
-```
-
-## Database Backend Selection (v0.6.0)
-
-Choose backend with config, env var, or CLI flag:
-
-* Config: `db_type = "sqlite-in-memory" | "sqlite-in-disk" | "valkey"`
-* Env: `CHRONOSEAL_DB_TYPE=...`
-* CLI: `chronoseal run --db-type sqlite-in-disk --db-path /var/lib/chronoseal/chronoseal.sqlite`
-
-Inspect backend status:
-
-```bash
-chronoseal db-type --format text
-```
-
----
-
-# Observability
-
-ChronoSeal exposes:
-
-* health probes
-* runtime statistics
-* Prometheus metrics
-
-## Metrics Example
-
-```bash
-chronoseal metrics
-```
-
-```text
-# HELP chronoseal_sessions Active ChronoSeal sessions
-# TYPE chronoseal_sessions gauge
-chronoseal_sessions 1
-```
-
----
-
-# Lightweight Runtime
-
-Current release artifacts:
-
-```text
-chronoseal             ~8.5 MB
-chronoseal_wasm.wasm  ~719 KB
-```
-
-ChronoSeal intentionally avoids:
-
-* heavyweight frontend frameworks
-* Electron-style packaging
-* telemetry-heavy dependencies
-* oversized runtime models
-
----
-
-# Philosophy
-
-ChronoSeal is intentionally not:
-
-* a surveillance framework
-* invasive browser fingerprinting
-* a CAPTCHA replacement
-* a telemetry ecosystem
-
-ChronoSeal is:
-
-* a cryptographic attestation runtime
-* a behavioral continuity engine
-* a proof-of-runtime framework
-* a lightweight Unix-native daemon
-
----
-
-# Contributing
-
-## Requirements
-
-* Rust stable
-* wasm-pack
-* NodeJS (optional frontend tooling)
-
-## Development Workflow
-
-```bash
-cargo fmt
-cargo clippy
-cargo test
-```
-
-## Guidelines
-
-* Keep security-sensitive logic inside Rust/WASM
-* Avoid placing trust logic in JavaScript
-* Preserve silent-failure behavior
-* Maintain deterministic protocol serialization
-
----
-
-# Security Policy
-
-## Reporting Vulnerabilities
-
-Please do not disclose security vulnerabilities publicly before responsible disclosure.
-
-Contact maintainers privately with:
-
-* reproduction steps
-* affected versions
-* impact assessment
-* proof-of-concept if applicable
-
-## Scope
-
-ChronoSeal intentionally operates as:
-
-* anti-automation middleware
-* behavioral attestation layer
-* cryptographic continuity verifier
-
-Security hardening evolves continuously.
-
----
-
-# Language Breakdown
-
-| Language   | Share  |
-| ---------- | ------ |
-| Rust       | 82.4%  |
-| JavaScript | 13.7%  |
-| Shell      | 1.6%   |
-| Dockerfile | 1.4%   |
-| HTML       | 0.9%   |
-
----
-
-Topics: `rust` · `cryptography` · `wasm` · `antibot` · `browser-security` · `behavioral-analysis` · `anti-scraping` · `headless-detection`
+at your option.
