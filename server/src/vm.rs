@@ -47,6 +47,7 @@ pub fn generate_random_program(len_range: std::ops::RangeInclusive<usize>) -> Ve
     ops
 }
 
+#[allow(dead_code)]
 pub fn execute_mutation_program(
     state: &mut GeneState,
     program: &[u8],
@@ -54,6 +55,7 @@ pub fn execute_mutation_program(
     vm_extensions::execute_program(state, program)
 }
 
+#[allow(dead_code)]
 pub fn execute_mutation_order(
     state: &mut GeneState,
     order: &MutationOrder,
