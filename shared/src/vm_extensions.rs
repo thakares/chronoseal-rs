@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 // NOTE: stack effect notation:
 //   +1  => pushes one u32
 //   -1  => pops one u32
-//   0   => net-zero (or no stack interaction)
+//    0  => net-zero (or no stack interaction)
 //
 // Security/performance notes:
 // - All index operands are normalized with modulo to avoid panics.

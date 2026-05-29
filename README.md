@@ -12,6 +12,19 @@
   Privacy-preserving • Unix-native • Lightweight • WASM-powered
 </p>
 
+<p align="center">
+  <a href="https://github.com/thakares/chronoseal-rs/blob/main/LICENSE.md">
+    <img src="https://img.shields.io/badge/license-GPL--3.0-blue.svg" alt="License: GPL-3.0">
+  </a>
+  <a href="https://github.com/thakares/chronoseal-rs">
+    <img src="https://img.shields.io/badge/rust-stable%20%E2%89%A5%201.87-orange.svg" alt="Rust stable ≥ 1.87">
+  </a>
+  <a href="https://github.com/thakares/chronoseal-rs/blob/main/docs/REFRACTORING-v0.6.0.md">
+    <img src="https://img.shields.io/badge/version-v0.6.0-green.svg" alt="v0.6.0">
+  </a>
+  <img src="https://img.shields.io/badge/wasm-rust--compiled-blueviolet.svg" alt="WASM">
+</p>
+
 ---
 
 ChronoSeal is a lightweight cryptographic attestation daemon designed to raise the operational cost of browser automation, scraping, replay attacks, and synthetic interaction.
@@ -58,6 +71,8 @@ See [docs/REFRACTORING-v0.6.0.md](docs/REFRACTORING-v0.6.0.md) for the full refa
 * Connection-pooled runtime architecture
 * Lightweight deployment footprint
 * Docker and native deployment support
+* Adaptive trust scoring
+* GPLv3 licensed
 
 ---
 
@@ -197,6 +212,7 @@ The server validates:
 | Naive browser automation | Behavioral continuity validation      |
 | Timestamp replay         | Drift-window enforcement              |
 | Session flooding         | Per-session rate limiting             |
+| Mutation tampering       | Server-side commitment parity checks  |
 
 ---
 
@@ -382,6 +398,123 @@ Session continuity is designed to reset transparently.
 
 ---
 
+# v0.6.0 — Synthetic Gene Mutation System
+
+## Overview & Motivation
+
+ChronoSeal v0.6.0 introduces a synthetic mutation chain model to strengthen attestation liveness and anti-replay guarantees while preserving privacy-first behavior. The core model combines:
+
+* a primary byte-oriented gene buffer (`Vec<u8>`), and
+* a bounded secondary environment map (`Vec<(u16 symbol, u32 quantity)>`).
+
+Each heartbeat now carries deterministic mutation progression evidence (`mutation_step`, `gene_commitment`) that is validated server-side against the exact server-issued mutation order. This design increases attacker workload by coupling cryptographic chain continuity with stateful deterministic mutation parity.
+
+## Architectural Goals
+
+1. Keep runtime behavior deterministic across server and WASM execution.
+2. Preserve ephemerality and low operational complexity.
+3. Minimize additional latency on the heartbeat path.
+4. Improve protocol resistance against replay and mutation tampering.
+5. Maintain a maintainable codebase with explicit invariants and focused modules.
+
+## Design Decisions
+
+**Shared mutation engine** — Mutation opcode semantics live in `shared/src/vm_extensions.rs` to guarantee server/client parity from one implementation.
+
+**Deterministic gene commitment** — A domain-separated BLAKE3 commitment (`chronoseal/gene/v1`) binds both gene bytes and sorted environment records.
+
+**Bounded mutation complexity** — Mutation program length is capped (`MAX_MUTATION_PROGRAM_BYTES`) and environment cardinality is capped (`MAX_ENV_RECORDS`).
+
+**Strict validation on ingest** — Environment payloads are validated for sortedness, uniqueness, non-zero quantity, and length constraints.
+
+**Protocol-level mutation handshake** — `InitResponse` and `Heartbeat` payloads now include mutation step/order and commitment fields.
+
+**DB backend control via `db_type`** — Server CLI/config now supports:
+
+* `sqlite-in-memory` (default)
+* `sqlite-in-disk` (active; uses `db_path`)
+* `valkey` (active compatibility mode; currently falls back to in-memory)
+
+## Implementation
+
+1. Gene model + deterministic commitment in `shared/gene.rs`.
+2. v0.6.0 mutation opcode set in shared VM extensions.
+3. Mutation state persisted per session (`gene`, `environment`, `pending_mutation`, `pending_mutation_step`).
+4. Protocol schema extended for mutation fields in init/heartbeat exchange.
+5. Mutation step + commitment parity validated before accepting heartbeat updates.
+6. WASM preview/commit mutation lifecycle mirrors server behavior.
+7. `db_type` CLI/config flow and runtime backend initialization strategy.
+8. Migration-safe schema extension (column existence checks + index creation).
+
+## Testing Strategy
+
+ChronoSeal v0.6.0 test coverage is organized across unit, integration, and randomized/fuzz-style validation.
+
+**Unit, integration, and property tests:**
+
+* Unit tests for gene invariants and encoding/decoding.
+* Unit tests for every mutation opcode with stack-effect assertions.
+* Integration tests for full session lifecycle and heartbeat acceptance/rejection paths.
+* Table-driven randomized tests and fuzz-style random bytecode tests to validate deterministic failure/success symmetry.
+
+**Server-client parity testing:**
+
+* Shared opcode engine parity tests across seeded mutation sequences.
+* Multi-step mutation chain test (`test_mutation_chain`) asserting identical server/client final state.
+* 10+ heartbeat deterministic simulation tests in session integration suite.
+
+**Evasion / attack simulation testing:**
+
+* Replay attack simulation.
+* Mutation step mismatch rejection.
+* Mutation commitment tampering rejection.
+* Malformed server mutation payload rejection.
+* Stack underflow / unknown opcode / truncated program rejection.
+
+**Performance regression testing:**
+
+* Bounded execution checks through capped program size and bounded record counts.
+* Timing smoke regression test for mutation execution loops.
+* End-to-end heartbeat test coverage to detect behavior regressions on hot paths.
+
+## Security Analysis
+
+**Replay resistance** — Heartbeats are now tied to both chain hash and mutation step progression.
+
+**Mutation tampering resistance** — Server recomputes candidate gene state from authoritative pending mutation program and rejects commitment mismatch.
+
+**Protocol ambiguity reduction** — Canonical signing payload includes mutation fields, reducing exploitable unsigned state.
+
+**Input hardening** — Program size limits, stack underflow checks, and strict environment decoding reduce parser abuse and malformed payload amplification.
+
+**Deterministic failure semantics** — Invalid mutation instructions fail predictably and symmetrically across server and WASM paths.
+
+## Performance Considerations
+
+* Mutation instructions are lightweight and mostly O(1); only `INSERT`/`DELETE` are O(n) but bounded by max gene size.
+* Environment operations use sorted-vector binary search with tight upper bound (`MAX_ENV_RECORDS`).
+* Commitment hashing is linear in gene size and record count, both bounded.
+* Shared engine avoids duplicate logic and divergence-induced debugging overhead.
+
+## Migration & Backward Compatibility
+
+* Schema migration is additive; new columns are created when missing.
+* Existing deployments without mutation fields require updated client+server pair for heartbeat compatibility.
+* `db_type` defaults to in-memory to preserve ephemeral behavior.
+* `sqlite-in-disk` is now directly usable via `db_path`.
+* `valkey` currently runs in compatibility mode (in-memory fallback) to avoid startup failure while preserving CLI contract.
+
+## Risks & Mitigations
+
+| Risk | Mitigation |
+| ---- | ---------- |
+| State divergence between server and client | Shared opcode engine + deterministic seeded parity tests + multi-heartbeat integration tests |
+| Mutation opcode abuse via malformed programs | Strict parsing, length caps, explicit underflow/unknown-opcode errors |
+| Performance regressions | Bounded structures, smoke timing tests, focused hot-path validation |
+| Backend confusion during `db_type` rollout | Explicit CLI command (`chronoseal db-type`), config output visibility, and clear runtime compatibility behavior |
+
+---
+
 # Runtime Architecture
 
 ## Server Runtime
@@ -399,7 +532,7 @@ Session continuity is designed to reset transparently.
 * Rust → WASM
 * Ed25519 signing
 * Blake3 chaining
-* stack-machine execution
+* Stack-machine execution
 
 ---
 
@@ -469,11 +602,24 @@ cargo run -p server -- run --bind 127.0.0.1:3000
 
 * Rust stable ≥ 1.87
 * `wasm-pack`
+* NodeJS (optional frontend tooling)
 
-Install:
+Install `wasm-pack`:
 
 ```bash
 cargo install wasm-pack
+```
+
+Build backend:
+
+```bash
+cargo run -p server --release
+```
+
+Build WASM:
+
+```bash
+wasm-pack build wasm --target web --release
 ```
 
 ---
@@ -574,13 +720,76 @@ ChronoSeal is:
 
 ---
 
+# Contributing
+
+## Requirements
+
+* Rust stable
+* wasm-pack
+* NodeJS (optional frontend tooling)
+
+## Development Workflow
+
+```bash
+cargo fmt
+cargo clippy
+cargo test
+```
+
+## Guidelines
+
+* Keep security-sensitive logic inside Rust/WASM
+* Avoid placing trust logic in JavaScript
+* Preserve silent-failure behavior
+* Maintain deterministic protocol serialization
+
+---
+
+# Security Policy
+
+## Reporting Vulnerabilities
+
+Please do not disclose security vulnerabilities publicly before responsible disclosure.
+
+Contact maintainers privately with:
+
+* reproduction steps
+* affected versions
+* impact assessment
+* proof-of-concept if applicable
+
+## Scope
+
+ChronoSeal intentionally operates as:
+
+* anti-automation middleware
+* behavioral attestation layer
+* cryptographic continuity verifier
+
+Security hardening evolves continuously.
+
+---
+
+# Language Breakdown
+
+| Language   | Share  |
+| ---------- | ------ |
+| Rust       | 82.4%  |
+| JavaScript | 13.7%  |
+| Shell      | 1.6%   |
+| Dockerfile | 1.4%   |
+| HTML       | 0.9%   |
+
+---
+
 # License
 
-[MIT OR Apache-2.0](LICENSE)
+[GPL-3.0](LICENSE.md)
 
 ---
 
 # Project
 
-GitHub:
-https://github.com/thakares/chronoseal-rs
+GitHub: https://github.com/thakares/chronoseal-rs
+
+Topics: `rust` · `cryptography` · `wasm` · `antibot` · `browser-security` · `behavioral-analysis` · `anti-scraping` · `headless-detection`
