@@ -14,6 +14,9 @@ pub enum SessionError {
     #[error("Database error: {0}")]
     Database(#[from] rusqlite::Error),
 
+    #[error("Storage error: {0}")]
+    Storage(String),
+
     #[error("R2D2 pool error: {0}")]
     Pool(#[from] r2d2::Error),
 
@@ -47,6 +50,9 @@ pub enum VerificationError {
 
     #[error("Database error: {0}")]
     Database(#[from] rusqlite::Error),
+
+    #[error("Storage error: {0}")]
+    Storage(String),
 
     #[error("Hex decoding error: {0}")]
     Hex(#[from] hex::FromHexError),

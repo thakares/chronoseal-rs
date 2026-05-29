@@ -269,6 +269,7 @@ dependencies = [
  "tracing",
  "tracing-appender",
  "tracing-subscriber",
+ "valkey",
 ]
 
 [[package]]
@@ -285,6 +286,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_json",
  "shared",
+ "tracing",
  "wasm-bindgen",
 ]
 
@@ -1303,6 +1305,7 @@ dependencies = [
  "rand 0.8.6",
  "serde",
  "serde_json",
+ "tracing",
 ]
 
 [[package]]
@@ -1747,6 +1750,15 @@ dependencies = [
  "js-sys",
  "rand 0.10.1",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "valkey"
+version = "0.0.0-alpha5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "591043068c3f8db7fc1dcf34852eb03994175d39045cf01ad036c099f3c4f888"
+dependencies = [
+ "tracing",
 ]
 
 [[package]]

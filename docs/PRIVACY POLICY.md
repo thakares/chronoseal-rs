@@ -1,278 +1,106 @@
-# ChronoSeal Privacy & Design Principles
+# ChronoSeal Privacy Policy
 
-## Privacy-First Browser Attestation Framework
+ChronoSeal is a privacy-oriented browser attestation system. It is designed to validate short-lived session continuity without creating persistent user profiles.
 
-ChronoSeal is a lightweight, privacy-first browser attestation framework designed to resist:
+This document describes what ChronoSeal itself collects and stores. Applications that integrate ChronoSeal may collect additional data under their own policies.
 
-- automated bots
-- AI-driven browser automation
-- scripted abuse
-- browser surveillance ecosystems
+## Data ChronoSeal Processes
 
-Unlike conventional anti-bot systems, ChronoSeal is intentionally designed to operate **without collecting or storing client identity data**.
+ChronoSeal processes the minimum protocol data needed to validate a live browser session.
 
----
-
-# Core Philosophy
-
-ChronoSeal verifies:
-
-- session continuity
-- runtime coherence
-- cryptographic synchronization
-
-It does **not** verify:
-
-- personal identity
-- browsing history
-- behavioral profiles
-- long-term reputation
-
-The framework is built around one principle:
-
-> Verify live browser participation without turning users into telemetry.
-
----
-
-# Privacy-First By Architecture
-
-ChronoSeal is intentionally engineered to avoid becoming:
-
-- a tracking platform
-- a fingerprinting database
-- a telemetry pipeline
-- a surveillance system
-
-## ChronoSeal Does NOT Store
-
-- IP addresses
-- Browser history
-- Persistent fingerprints
-- User profiles
-- Behavioral telemetry
-- Tracking identifiers
-- Device databases
-- Long-term session history
-- Cross-site correlation data
-
-No client-side personal information is persisted.
-
----
-
-# Stateless Trust Model
-
-ChronoSeal focuses on:
-
-- ephemeral runtime verification
-- cryptographic continuity
-- synchronized challenge progression
-- live execution integrity
-
-The server only validates:
-
-- whether the current browser session behaves like a coherent participant *right now*
-
-ChronoSeal does not maintain:
-
-- user identity databases
-- reputation systems
-- persistent surveillance records
-
----
-
-# Anti-Bot Without Surveillance
-
-Most modern anti-bot systems rely heavily on:
-
-- fingerprinting
-- behavioral tracking
-- telemetry aggregation
-- centralized analytics
-
-ChronoSeal deliberately rejects this model.
-
-Instead, ChronoSeal uses:
-
-- synchronized cryptographic chains
-- WASM-isolated signing
-- protocol continuity
-- transient verification state
-
-This provides bot resistance while preserving user privacy.
-
----
-
-# Lightweight By Design
-
-ChronoSeal is intentionally engineered to remain:
-
-- compact
-- dependency-light
-- operationally simple
-- Unix-native
-
-## Current Footprint
-
-### Server Binary
-
-Compiled x86_64 Linux server binary:
-
-- ~8.4 MB
-
-### WASM Runtime
-
-`chronoseal_wasm_bg.wasm`
-
-- ~218 KB
-
-### Full WASM Package
-
-Entire generated WASM package:
-
-- ~720 KB
-
-Includes:
-
-- WASM runtime
-- JavaScript glue code
-- Type definitions
-
----
-
-# No Frontend Framework Dependency
-
-ChronoSeal does not depend on:
-
-- React
-- Angular
-- Vue
-- Electron
-- Node.js runtime
-- Browser bundler ecosystems
-
-The browser runtime uses:
-
-- native ES modules
-- direct WebAssembly loading
-- lightweight JavaScript glue
-
-This minimizes:
-
-- dependency complexity
-- supply-chain risk
-- build fragility
-- browser overhead
-
----
-
-# Clean Repository Philosophy
-
-ChronoSeal keeps generated artefacts out of version control.
-
-## What Is NOT Stored In The Repository
-
-| Path | Reason |
+| Data | Purpose |
 |---|---|
-| `wasm/pkg/` | Generated build output |
-| `frontend/pkg/` | Generated serve-time artefacts |
-| `target/` | Standard Rust build artefacts |
+| `session_id` | Opaque session lookup key |
+| public key | Verify signed heartbeats for the session |
+| `salt` | Hash-chain progression |
+| `initial_hash` / `prev_hash` / `last_hash` | Replay-resistant continuity |
+| `timestamp` | Drift and liveness validation |
+| mouse event samples | Behavioral plausibility checks |
+| VM stack state | Input to hash-chain progression |
+| basic fingerprint fields | Sanity validation |
+| gene bytes and environment records | Mutation continuity |
+| pending mutation program and step | Next heartbeat verification |
+| expiration and last-seen timestamps | Session lifecycle and cleanup |
 
-Generated binaries change frequently and are reproducible from source.
+Basic fingerprint fields currently include:
 
-The repository intentionally stores:
+- aspect ratio
+- device pixel ratio
+- hardware concurrency
 
-- source code
-- architecture
-- reproducible build logic only
+## Data ChronoSeal Does Not Intentionally Collect
 
----
+ChronoSeal does not intentionally collect or build:
 
-# Unix-Native Operational Model
+- browser history
+- page content history
+- account identity
+- email addresses
+- names
+- payment data
+- location history
+- cross-site tracking identifiers
+- persistent fingerprint databases
+- long-term behavioral profiles
 
-ChronoSeal is designed as:
+ChronoSeal is not intended for analytics, advertising, or identity graph construction.
 
-- infrastructure software
-- not browser-centric SaaS
+## Session Lifetime
 
-Core operational principles:
+Sessions are short-lived and expire according to `expiration_minutes`, which defaults to 30 minutes.
 
-- CLI-first operation
-- systemd-native deployment
-- structured logs
-- explicit configuration
-- inspectable runtime behavior
-- minimal hidden state
+Expired sessions are removed by cleanup behavior. In-memory storage is lost when the process exits.
 
-ChronoSeal should feel natural on Linux systems:
+## Storage Modes and Persistence
 
-- simple to deploy
-- easy to audit
-- understandable years later
+| Mode | Persistence |
+|---|---|
+| `sqlite-in-memory` | process lifetime only |
+| `sqlite-in-disk` | persisted to the configured SQLite file |
+| `valkey` | persisted according to the Valkey deployment configuration |
 
----
+Persistent state is operator-selected. The default backend is `sqlite-in-memory`.
 
-# Security Through Operational Asymmetry
+## Client-Side Key Handling
 
-ChronoSeal increases attacker cost through:
+The browser WASM runtime generates an Ed25519 keypair for the session.
 
-- synchronization burden
-- runtime continuity requirements
-- WASM-isolated cryptographic execution
-- chained session progression
+- The public key is sent to `/init`.
+- The private key is not sent to the server.
+- Heartbeat payloads are signed in the browser runtime.
 
-It does not attempt:
+This is a continuity mechanism, not a long-term identity mechanism.
 
-- invasive tracking
-- permanent identification
-- surveillance-driven scoring
+## Silent Rejection
 
----
+ChronoSeal returns the same basic heartbeat status for accepted and rejected heartbeat requests:
 
-# Design Goals
+```json
+{
+  "status": "ok"
+}
+```
 
-ChronoSeal prioritizes:
+Accepted responses additionally include next-state fields. Rejected responses omit them.
 
-- Privacy
-- Simplicity
-- Transparency
-- Operational clarity
-- Long-term maintainability
-- Minimalism
-- Unix-native behavior
-- Low deployment friction
+This reduces attacker feedback and avoids returning detailed failure classifications to clients.
 
----
+## Logs
 
-# Non-Goals
+Operators control logging through `CHRONOSEAL_LOG`, `RUST_LOG`, and optional log-file configuration.
 
-ChronoSeal is intentionally NOT:
+Production deployments should avoid debug logging because internal session identifiers or validation context may appear in logs.
 
-- A surveillance platform
-- A telemetry collection system
-- A browser fingerprinting database
-- An analytics engine
-- A cloud lock-in service
-- A JavaScript-heavy frontend platform
-- An advertising or tracking framework
+## Operator Responsibilities
 
----
+Operators should:
 
-# Summary
+- serve traffic over HTTPS
+- protect SQLite, Valkey, and log storage
+- restrict access to metrics and stats endpoints
+- choose persistence mode deliberately
+- disclose any application-level data collection separately
 
-ChronoSeal is designed to prove:
+## Summary
 
-> “A live browser session is coherently participating right now.”
-
-without storing:
-
-- who the user is
-- where they came from
-- what they previously did
-
-It is a lightweight, privacy-preserving, Unix-native browser attestation framework focused on:
-
-- anti-bot resistance
-- anti-automation
-- operational simplicity
-
-without compromising user privacy.
+ChronoSeal validates live session continuity using short-lived cryptographic and deterministic state. It is designed to raise automation cost without becoming a persistent tracking or profiling system.

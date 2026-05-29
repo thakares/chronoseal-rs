@@ -11,3 +11,4 @@ hex = "0.4"
 base64 = "0.22"
 rand = "0.8"
 ed25519-dalek = { version = "2", features = ["rand_core"] }
+tracing = "0.1"

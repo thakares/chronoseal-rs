@@ -123,6 +123,10 @@ pub struct RunArgs {
     /// Optional structured JSON log file.
     #[arg(long, env = "CHRONOSEAL_LOG_FILE")]
     pub log_file: Option<PathBuf>,
+
+    /// Number of mutation rounds to execute per program.
+    #[arg(long, env = "CHRONOSEAL_MUTATION_ROUNDS")]
+    pub mutation_rounds: Option<u8>,
 }
 
 #[derive(Debug, Clone, Args)]

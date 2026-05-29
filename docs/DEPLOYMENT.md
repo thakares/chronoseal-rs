@@ -1,205 +1,244 @@
-# ChronoSeal — Deployment Guide
+# ChronoSeal Deployment Guide
 
-## Prerequisites
+ChronoSeal is intended to run as a small Unix daemon behind TLS, with static browser assets served either by the daemon or by the same protected origin. This guide covers native, service, and container deployment.
 
-| Tool | Minimum version | Purpose |
-|---|---|---|
-| Rust | 1.87 stable | Server + WASM compilation |
-| wasm-pack | 0.13 | WASM build and packaging |
-| Docker + Compose | 24 / 2.x | Container deployment |
-| nginx / NPM / HAProxy | any | TLS termination, reverse proxy |
+## Deployment Model
 
-Install Rust: https://rustup.rs  
-Install wasm-pack: `cargo install wasm-pack`
+Typical production topology:
 
----
+```text
+Internet
+   |
+   v
+TLS reverse proxy
+   |
+   v
+chronoseal daemon on 127.0.0.1:3000
+   |
+   v
+sqlite-in-disk or valkey storage
+```
+
+For local evaluation, the daemon can bind directly to `0.0.0.0:3000` or `127.0.0.1:3000`.
+
+## Requirements
+
+| Tool | Minimum | Purpose |
+|---|---:|---|
+| Rust | 1.87 stable | Build server and shared crates |
+| `wasm32-unknown-unknown` target | current stable | Compile WASM runtime |
+| `wasm-pack` | 0.13 | Generate browser WASM package |
+| systemd | 248+ | Native service management |
+| Docker | 24.x | Optional container image |
+| Docker Compose | 2.x | Optional local orchestration |
+
+Install Rust from rustup, then install the WASM tooling:
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack
+```
 
 ## Build
 
-### 1. Build the WASM module
-
-```bash
-wasm-pack build wasm --target web --release
-mv wasm/pkg frontend/pkg
-```
-
-This produces `frontend/pkg/antibot_wasm.js` and `frontend/pkg/antibot_wasm_bg.wasm`,
-which are loaded by `frontend/main.js` at runtime.
-
-### 2. Build the server
-
-```bash
-cargo build -p server --release
-```
-
-Binary output: `target/release/server`
-
-### 3. Build both (convenience script)
+Use the repository build script:
 
 ```bash
 bash scripts/build.sh
 ```
 
----
+The script:
 
-## Running
+1. Builds `wasm/` with `wasm-pack build --target web --release`.
+2. Replaces `frontend/pkg` with the generated package.
+3. Builds the release daemon binary.
 
-### Development
-
-```bash
-bash scripts/dev.sh
-```
-
-Runs the server with `cargo run --release`. The server serves the `frontend/`
-directory statically at `/` via tower-http `ServeDir`.
-
-Open `http://localhost:3000` in a browser. Open DevTools console — heartbeats
-should appear every 12–25 seconds. No visible UI is rendered; the protection
-is entirely silent.
-
-### Production (native binary)
+Manual equivalent:
 
 ```bash
-cargo build -p server --release
-sudo cp target/release/server /usr/local/bin/chronoseal
+wasm-pack build wasm --target web --release
+rm -rf frontend/pkg
+mv wasm/pkg frontend/pkg
+
+cargo build -p chronoseal-server --bin chronoseal --release
 ```
 
-Set environment variables before running:
+Release binary:
+
+```text
+target/release/chronoseal
+```
+
+## Native Install
+
+The installer builds, installs, enables, and starts the service:
 
 ```bash
-export RUST_LOG=info      # or warn for quieter output
-chronoseal
+sudo bash scripts/install.sh
 ```
 
-The server binds to `0.0.0.0:3000` by default. Place behind a reverse proxy
-for TLS — do not expose port 3000 directly.
+Installer actions:
 
----
+- create the `chronoseal` system user if missing
+- build WASM and server artifacts
+- install `target/release/chronoseal` to `/usr/local/bin/chronoseal`
+- copy `frontend/` to `/opt/chronoseal/frontend`
+- install `chronoseal.service` to `/etc/systemd/system/chronoseal.service`
+- reload systemd
+- enable and start the service
 
-## systemd
-
-### Service file
-
-The provided `chronoseal.service` includes hardened systemd sandboxing:
-
-```
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectControlGroups=true
-MemoryDenyWriteExecute=true
-RestrictRealtime=true
-RestrictSUIDSGID=true
-LockPersonality=true
-SystemCallArchitectures=native
-```
-
-### Install
-
-```bash
-# Create a dedicated system user
-sudo useradd --system --no-create-home --shell /usr/sbin/nologin chronoseal
-
-# Install binary and frontend
-sudo cp target/release/server /usr/local/bin/chronoseal
-sudo mkdir -p /opt/chronoseal/frontend
-sudo cp -r frontend/ /opt/chronoseal/frontend/
-sudo chown -R chronoseal:chronoseal /opt/chronoseal
-
-# Install and enable service
-sudo cp chronoseal.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now chronoseal
-```
-
-### Verify
+Verify:
 
 ```bash
 sudo systemctl status chronoseal
-journalctl -u chronoseal -f
+chronoseal status --format json
+chronoseal health
+sudo journalctl -u chronoseal -f
 ```
 
----
+## Running Without Install
 
-## Docker
-
-### Build and run
+For local development:
 
 ```bash
-docker compose up -d --build
+bash scripts/build.sh
+cargo run -p chronoseal-server --bin chronoseal -- run \
+  --bind 127.0.0.1:3000 \
+  --frontend-dir frontend
 ```
 
-### docker-compose.yml overview
-
-```yaml
-services:
-  chronoseal:
-    build: .
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      RUST_LOG: info
-    tmpfs:
-      - /tmp
-```
-
-The `tmpfs` mount ensures the in-memory SQLite database is never written to
-disk, even if Docker's storage driver were to flush the container filesystem.
-
-### Dockerfile stages
-
-The Dockerfile uses a two-stage build:
-
-1. `rust:1.87-bookworm` — compiles the server binary
-2. `debian:bookworm-slim` — minimal runtime image with only `ca-certificates`
-
-The WASM module and frontend must be built separately (wasm-pack requires a
-browser toolchain not present in the server image) and mounted or copied into
-the container at `/opt/chronoseal/frontend/`.
+Probe the daemon:
 
 ```bash
-# Build WASM first
-wasm-pack build wasm --target web --release
-mv wasm/pkg frontend/pkg
-
-# Then build and run the container
-docker compose up -d --build
+curl http://127.0.0.1:3000/health
+curl http://127.0.0.1:3000/stats
+curl http://127.0.0.1:3000/metrics
 ```
 
-Or mount the pre-built frontend as a volume:
+## Configuration
 
-```yaml
-volumes:
-  - ./frontend:/opt/chronoseal/frontend:ro
+ChronoSeal resolves configuration in this order:
+
+1. CLI flags
+2. `CHRONOSEAL_*` environment variables
+3. TOML config file
+4. built-in defaults
+
+Default config discovery:
+
+1. `CHRONOSEAL_CONFIG`, if it points to an existing file
+2. `/etc/chronoseal/config.toml`
+3. `$XDG_CONFIG_HOME/chronoseal/config.toml`
+4. `~/.config/chronoseal/config.toml`
+
+Validate effective configuration:
+
+```bash
+chronoseal config check --format yaml
 ```
 
----
+Example:
 
-## Reverse Proxy
+```toml
+bind = "127.0.0.1:3000"
+db_type = "sqlite-in-disk"
+pid_file = "/run/chronoseal.pid"
+db_path = "/var/lib/chronoseal/chronoseal.sqlite"
+frontend_dir = "/usr/share/chronoseal/frontend"
+log_file = "/var/log/chronoseal/chronoseal.jsonl"
 
-ChronoSeal must be served over HTTPS. The heartbeat payload contains a
-timestamp; if traffic is observable in plaintext, timing attacks become
-easier. TLS 1.3 is strongly recommended.
+heartbeat_min_interval_ms = 12000
+heartbeat_max_interval_ms = 25000
+expiration_minutes = 30
+rate_limit_count = 5
+rate_limit_window_secs = 10
+max_timestamp_drift_ms = 30000
 
-### nginx
+min_mouse_total_dist = 10.0
+max_mouse_avg_speed = 2.0
+min_pause_count = 1
+require_mouse_activity = true
+
+gene_size = 512
+mutation_rounds = 4
+```
+
+## Storage Backends
+
+| Backend | `db_type` | Use case |
+|---|---|---|
+| SQLite memory | `sqlite-in-memory` | ephemeral local or stateless deployment |
+| SQLite disk | `sqlite-in-disk` | persisted session continuity across restarts |
+| Valkey | `valkey` | external session storage |
+
+For disk persistence:
+
+```bash
+sudo mkdir -p /var/lib/chronoseal
+sudo chown -R chronoseal:chronoseal /var/lib/chronoseal
+```
+
+For Valkey:
+
+```bash
+export CHRONOSEAL_DB_TYPE=valkey
+export CHRONOSEAL_VALKEY_ADDR=127.0.0.1:6666
+```
+
+If Valkey connection setup fails, the current implementation logs a warning and falls back to in-memory SQLite.
+
+## systemd
+
+The supplied service file is intended as the baseline unit. Keep the daemon under a dedicated user and restrict filesystem access to the paths it needs.
+
+Useful commands:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now chronoseal
+sudo systemctl restart chronoseal
+sudo systemctl status chronoseal
+sudo journalctl -u chronoseal -f
+```
+
+Recommended hardening properties include:
+
+- `NoNewPrivileges=true`
+- `PrivateTmp=true`
+- `ProtectSystem=strict`
+- `ProtectHome=true`
+- `ProtectKernelTunables=true`
+- `ProtectKernelModules=true`
+- `ProtectControlGroups=true`
+- `MemoryDenyWriteExecute=true`
+- `RestrictRealtime=true`
+- `RestrictSUIDSGID=true`
+- `SystemCallArchitectures=native`
+
+Any hardening must still allow access to:
+
+- the binary
+- frontend assets
+- PID file directory
+- optional log file directory
+- SQLite database directory, if using `sqlite-in-disk`
+
+## Reverse Proxy and TLS
+
+ChronoSeal should be served over HTTPS in production. Terminate TLS at a reverse proxy or load balancer and proxy to the local daemon.
+
+Minimal nginx example:
 
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name your.domain.com;
+    server_name example.com;
 
-    ssl_certificate     /etc/letsencrypt/live/your.domain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/your.domain.com/privkey.pem;
-    ssl_protocols       TLSv1.3;
-    ssl_ciphers         ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_certificate     /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
 
-    # Tight timeouts — heartbeat interval is 12–25s
-    proxy_read_timeout  35s;
-    proxy_send_timeout  10s;
+    proxy_read_timeout 35s;
+    proxy_send_timeout 10s;
 
     location / {
         proxy_pass         http://127.0.0.1:3000;
@@ -213,134 +252,79 @@ server {
 
 server {
     listen 80;
-    server_name your.domain.com;
+    server_name example.com;
     return 301 https://$host$request_uri;
 }
 ```
 
-### Nginx Proxy Manager
+Keep `/init`, `/hb`, and frontend assets on the same origin when possible. If you split origins, configure CORS and cookie/application policy deliberately.
 
-1. Add a new Proxy Host pointing to `http://chronoseal:3000`
-2. Enable SSL, Request Let's Encrypt certificate
-3. Enable HTTP/2, Force SSL
-4. Under Advanced, add:
-   ```
-   proxy_read_timeout 35s;
-   proxy_send_timeout 10s;
-   ```
+## Docker
 
-### HAProxy
+Build and run:
 
-```haproxy
-frontend https_front
-    bind *:443 ssl crt /etc/haproxy/certs/your.domain.pem alpn h2,http/1.1
-    default_backend chronoseal_back
-
-backend chronoseal_back
-    server chronoseal 127.0.0.1:3000 check
-    timeout connect 5s
-    timeout server  35s
+```bash
+bash scripts/build.sh
+docker compose up -d --build
 ```
 
----
+The Compose file exposes port `3000`.
 
-## Integration into an Existing Site
-
-ChronoSeal is designed to run as a sidecar — its `/init` and `/hb` endpoints
-can be proxied from any existing web server. The frontend assets (`pkg/`) need
-to be served from the same origin as the protected page (or CORS must be
-configured).
-
-### Option A — Serve everything from ChronoSeal
-
-ChronoSeal serves `frontend/` statically. Put your protected HTML inside
-`frontend/` and let ChronoSeal serve it directly.
-
-### Option B — Proxy only the API endpoints
-
-Keep your existing server. Proxy `/init` and `/hb` to ChronoSeal, and serve
-the WASM and JS assets from your CDN or existing static file server.
-
-```nginx
-# On your existing server:
-location ~ ^/(init|hb)$ {
-    proxy_pass http://127.0.0.1:3000;
-}
+```bash
+curl http://127.0.0.1:3000/health
 ```
 
-Add to your protected pages:
-
-```html
-<script type="module" src="/pkg/antibot_wasm.js"></script>
-<script type="module" src="/main.js"></script>
-```
-
----
-
-## Configuration
-
-All parameters are in `shared/src/constants.rs`. Recompile after changes.
-
-| Constant | Default | Notes |
-|---|---|---|
-| `SESSION_ID_LEN` | 32 bytes | 256-bit entropy — do not reduce |
-| `SALT_LEN` | 16 bytes | Per-heartbeat salt |
-| `HEARTBEAT_MIN_INTERVAL_MS` | 12 000 ms | Increase to reduce server load |
-| `HEARTBEAT_MAX_INTERVAL_MS` | 25 000 ms | Jitter upper bound |
-| `EXPIRATION_MINUTES` | 30 min | Session TTL after last heartbeat |
-| `RATE_LIMIT_COUNT` | 5 | Max heartbeats per window per session |
-| `RATE_LIMIT_WINDOW_SECS` | 10 s | Rate limit window |
-| `MAX_TIMESTAMP_DRIFT_MS` | 30 000 ms | Anti-replay window; account for NTP skew |
-| `MIN_MOUSE_TOTAL_DIST` | 10.0 px | Lower for low-activity pages |
-| `MAX_MOUSE_AVG_SPEED` | 2.0 px/ms | Raise if legitimate users are rejected |
-| `MIN_PAUSE_COUNT` | 1 | Minimum natural pause events |
-
----
+The Dockerfile copies `frontend/` from the working tree. Build `frontend/pkg` before building the image when the browser WASM runtime is required inside the container.
 
 ## Observability
 
-ChronoSeal uses `tracing` with `tracing-subscriber`. Log levels:
-
-| Level | Events |
-|---|---|
-| `INFO` | Server start, request method + path + status |
-| `WARN` | Heartbeat validation failures (with session ID and reason) |
-| `DEBUG` | Rate limit hits |
+CLI:
 
 ```bash
-RUST_LOG=info   chronoseal   # production
-RUST_LOG=debug  chronoseal   # development
-RUST_LOG=warn   chronoseal   # minimal output
+chronoseal status --format json
+chronoseal health
+chronoseal stats --format json
+chronoseal metrics
 ```
 
-Log format is plain text to stdout. Pipe to `journald`, `fluentd`, or any
-log aggregator via stdout capture.
-
----
-
-## Health Check
-
-The server has no dedicated `/health` endpoint. Use a TCP check on port 3000,
-or a lightweight HTTP check on `GET /` (which serves `index.html`).
+HTTP:
 
 ```bash
-# Docker health check (add to docker-compose.yml if needed)
-healthcheck:
-  test: ["CMD", "curl", "-sf", "http://localhost:3000/"]
-  interval: 30s
-  timeout: 5s
-  retries: 3
+curl http://127.0.0.1:3000/health
+curl http://127.0.0.1:3000/stats
+curl http://127.0.0.1:3000/metrics
 ```
 
----
+Prometheus metrics:
 
-## Security Checklist
+- `chronoseal_sessions`
+- `chronoseal_expired_sessions`
+- `chronoseal_max_chain_length`
 
-- [ ] TLS 1.3 enabled, TLS 1.0/1.1 disabled
-- [ ] HTTP/2 enabled
-- [ ] Port 3000 not exposed to the public internet (only via reverse proxy)
-- [ ] `RUST_LOG=warn` or `info` in production (not `debug` — session IDs appear in logs)
-- [ ] systemd service running as `chronoseal` user with hardened sandbox
-- [ ] `MemoryDenyWriteExecute=true` in service file (prevents JIT in process)
-- [ ] CORS `CorsLayer::permissive()` replaced with origin-restricted policy for production
-- [ ] Frontend assets served over the same HTTPS origin as protected pages
+## Logging
+
+Use info-level logs for production:
+
+```bash
+CHRONOSEAL_LOG=info chronoseal run
+```
+
+or with systemd:
+
+```bash
+sudo systemctl edit chronoseal
+```
+
+Avoid debug logging in production because internal identifiers may be written to logs.
+
+## Production Checklist
+
+- Build `frontend/pkg` before packaging.
+- Serve ChronoSeal traffic over HTTPS.
+- Bind the daemon to localhost behind a reverse proxy unless direct exposure is required.
+- Use a dedicated service user.
+- Keep debug logs disabled.
+- Choose storage intentionally: `sqlite-in-memory`, `sqlite-in-disk`, or `valkey`.
+- Protect SQLite and log directories with correct ownership.
+- Monitor `/health`, `/stats`, and `/metrics`.
+- Verify `chronoseal config check` after environment or config changes.
