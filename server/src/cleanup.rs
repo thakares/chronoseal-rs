@@ -5,16 +5,10 @@ pub async fn cleanup_loop(state: Arc<AppState>) {
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(60)).await;
 
-        // Evict expired sessions from SQLite.
+        // Evict expired sessions from the configured storage backend.
         {
-            if let Ok(conn) = state.db_pool.get() {
-                let now = crate::storage::current_time_ms();
-                let _ = conn.execute(
-                    "DELETE FROM sessions WHERE expires_at < ?1",
-                    rusqlite::params![now],
-                );
-            } else {
-                tracing::error!("Failed to get database connection from pool for cleanup");
+            if let Err(err) = state.db_pool.delete_expired_sessions() {
+                tracing::error!("Failed to evict expired sessions: {}", err);
             }
         }
 

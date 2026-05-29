@@ -197,6 +197,19 @@ pub fn commitment_hex(state: &GeneState) -> String {
     hex::encode(commitment(state))
 }
 
+pub fn commitment_with_context(state: &GeneState, session_id: &str, step: u64) -> [u8; 32] {
+    let mut h = blake3::Hasher::new();
+    h.update(b"chronoseal/gene/v1");
+    h.update(session_id.as_bytes());
+    h.update(&step.to_le_bytes());
+    h.update(&commitment(state));
+    *h.finalize().as_bytes()
+}
+
+pub fn commitment_hex_with_context(state: &GeneState, session_id: &str, step: u64) -> String {
+    hex::encode(commitment_with_context(state, session_id, step))
+}
+
 fn validate_environment(records: &[EnvironmentRecord]) -> Result<(), GeneError> {
     if records.len() > MAX_ENV_RECORDS {
         return Err(GeneError::TooManyEnvironmentRecords { len: records.len() });

@@ -46,6 +46,7 @@ pub struct Config {
     pub min_pause_count: u32,
     pub require_mouse_activity: bool,
     pub gene_size: usize,
+    pub mutation_rounds: u8,
 }
 
 impl Default for Config {
@@ -68,6 +69,7 @@ impl Default for Config {
             min_pause_count: 1,
             require_mouse_activity: true,
             gene_size: shared::constants::DEFAULT_GENE_SIZE,
+            mutation_rounds: shared::constants::DEFAULT_MUTATION_ROUNDS,
         }
     }
 }
@@ -118,6 +120,9 @@ impl Config {
         if let Some(log_file) = &args.log_file {
             self.log_file = Some(log_file.clone());
         }
+        if let Some(mutation_rounds) = args.mutation_rounds {
+            self.mutation_rounds = mutation_rounds;
+        }
     }
 
     pub fn validate(&self) -> Result<(), ConfigError> {
@@ -130,6 +135,11 @@ impl Config {
         if !(1..=shared::constants::MAX_GENE_SIZE).contains(&self.gene_size) {
             return Err(ConfigError::InvalidGeneSize {
                 size: self.gene_size,
+            });
+        }
+        if !(1..=shared::constants::MAX_MUTATION_ROUNDS).contains(&self.mutation_rounds) {
+            return Err(ConfigError::InvalidMutationRounds {
+                rounds: self.mutation_rounds,
             });
         }
         Ok(())
@@ -214,6 +224,11 @@ impl Config {
                 self.gene_size = val;
             }
         }
+        if let Ok(value) = env::var("CHRONOSEAL_MUTATION_ROUNDS") {
+            if let Ok(val) = value.parse() {
+                self.mutation_rounds = val;
+            }
+        }
     }
 }
 
@@ -234,6 +249,9 @@ pub enum ConfigError {
     InvalidGeneSize {
         size: usize,
     },
+    InvalidMutationRounds {
+        rounds: u8,
+    },
 }
 
 impl std::fmt::Display for ConfigError {
@@ -251,6 +269,13 @@ impl std::fmt::Display for ConfigError {
                     f,
                     "invalid gene size {size}; expected 1..={}",
                     shared::constants::MAX_GENE_SIZE
+                )
+            }
+            Self::InvalidMutationRounds { rounds } => {
+                write!(
+                    f,
+                    "invalid mutation rounds {rounds}; expected 1..={}",
+                    shared::constants::MAX_MUTATION_ROUNDS
                 )
             }
         }
@@ -316,6 +341,7 @@ mod tests {
             db_path: None,
             frontend_dir: None,
             log_file: None,
+            mutation_rounds: None,
         };
         cfg.apply_run_args(&args);
         assert_eq!(cfg.db_type, DbType::SqliteInDisk);

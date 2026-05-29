@@ -1,11 +1,15 @@
 use crate::{
-    constants::{MAX_GENE_SIZE, MAX_MUTATION_PROGRAM_BYTES},
+    constants::{
+        HASH_OPCODE_INSTRUCTION_COST, MAX_GENE_SIZE, MAX_MUTATION_PROGRAM_BYTES,
+        MAX_MUTATION_INSTRUCTION_BUDGET, DEFAULT_MUTATION_ROUNDS, SOFT_CAP_DURATION_MS,
+    },
     gene::{
         add_env_quantity, get_env_quantity, sub_env_quantity, validate_state, GeneError, GeneState,
     },
 };
 use rand::Rng;
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 
 // Stack-machine mutation opcodes (v0.6.0).
 //
@@ -107,48 +111,65 @@ pub fn generate_order_with_rng<R: Rng + ?Sized>(
     step: u64,
     gene_size: usize,
 ) -> MutationOrder {
-    let mut program = Vec::with_capacity(96);
+    let mut program = Vec::with_capacity(128);
     let mut stack_depth: i32 = 0;
     let mut estimated_gene_len = gene_size.clamp(1, MAX_GENE_SIZE);
-    let ops = rng.gen_range(8usize..=18usize);
+    let ops = rng.gen_range(20usize..=36usize);
+    let mut hash_ops_needed = rng.gen_range(2..=3);
 
-    for _ in 0..ops {
-        let op = if stack_depth <= 0 {
+    for idx in 0..ops {
+        let remaining = ops - idx;
+        let op = if hash_ops_needed > 0 && remaining <= hash_ops_needed {
+            OP_FINALIZE_GENE_HASH
+        } else if stack_depth <= 0 {
             rng.gen_range(0u8..3u8)
         } else {
-            rng.gen_range(0u8..10u8)
+            match rng.gen_range(0u8..12u8) {
+                0..=1 => OP_GENE_LOAD,
+                2..=3 => OP_TRANSCRIBE,
+                4 => OP_FINALIZE_GENE_HASH,
+                5 => OP_GENE_STORE,
+                6 => OP_MUTATE_POINT,
+                7 => OP_INSERT,
+                8 => OP_DELETE,
+                9 => OP_APPLY_MUTAGEN,
+                10 => OP_CONSUME,
+                _ => OP_PRODUCE,
+            }
         };
+
         match op {
-            // Pushers
-            0 => {
+            OP_GENE_LOAD => {
                 program.push(OP_GENE_LOAD);
                 push_u16(&mut program, rng.r#gen::<u16>());
                 stack_depth += 1;
             }
-            1 => {
+            OP_TRANSCRIBE => {
                 program.push(OP_TRANSCRIBE);
                 push_u16(&mut program, rng.r#gen::<u16>());
                 program.push(rng.gen_range(1u8..=16u8));
                 stack_depth += 1;
             }
-            2 => {
+            OP_FINALIZE_GENE_HASH => {
                 program.push(OP_FINALIZE_GENE_HASH);
                 stack_depth += 1;
+                if hash_ops_needed > 0 {
+                    hash_ops_needed -= 1;
+                }
             }
-            // Consumers
-            3 => {
+            OP_GENE_STORE => {
                 if stack_depth > 0 {
                     program.push(OP_GENE_STORE);
                     push_u16(&mut program, rng.r#gen::<u16>());
                     stack_depth -= 1;
                 }
             }
-            4 => {
+            OP_MUTATE_POINT => {
                 program.push(OP_MUTATE_POINT);
                 push_u16(&mut program, rng.r#gen::<u16>());
                 program.push(rng.r#gen::<u8>());
             }
-            5 => {
+            OP_INSERT => {
                 if stack_depth > 0 && estimated_gene_len < MAX_GENE_SIZE {
                     program.push(OP_INSERT);
                     push_u16(&mut program, rng.r#gen::<u16>());
@@ -156,7 +177,7 @@ pub fn generate_order_with_rng<R: Rng + ?Sized>(
                     estimated_gene_len += 1;
                 }
             }
-            6 => {
+            OP_DELETE => {
                 program.push(OP_DELETE);
                 push_u16(&mut program, rng.r#gen::<u16>());
                 stack_depth += 1;
@@ -164,7 +185,7 @@ pub fn generate_order_with_rng<R: Rng + ?Sized>(
                     estimated_gene_len -= 1;
                 }
             }
-            7 => {
+            OP_APPLY_MUTAGEN => {
                 if stack_depth > 0 {
                     program.push(OP_APPLY_MUTAGEN);
                     push_u16(&mut program, rng.r#gen::<u16>());
@@ -172,33 +193,119 @@ pub fn generate_order_with_rng<R: Rng + ?Sized>(
                     stack_depth -= 1;
                 }
             }
-            8 => {
+            OP_CONSUME => {
                 if stack_depth > 0 {
                     program.push(OP_CONSUME);
                     push_u16(&mut program, rng.r#gen::<u16>());
                 }
             }
-            _ => {
+            OP_PRODUCE => {
                 if stack_depth > 0 {
                     program.push(OP_PRODUCE);
                     push_u16(&mut program, rng.r#gen::<u16>());
                 }
             }
+            _ => {}
         }
+    }
+
+    while hash_ops_needed > 0 && program.len() + 1 <= MAX_MUTATION_PROGRAM_BYTES {
+        program.push(OP_FINALIZE_GENE_HASH);
+        hash_ops_needed -= 1;
     }
 
     MutationOrder { step, program }
 }
 
 pub fn apply_program_clone(state: &GeneState, program: &[u8]) -> Result<GeneState, MutationError> {
+    apply_program_clone_with_rounds(state, program, DEFAULT_MUTATION_ROUNDS)
+}
+
+pub fn apply_program_clone_with_rounds(
+    state: &GeneState,
+    program: &[u8],
+    rounds: u8,
+) -> Result<GeneState, MutationError> {
     let mut next = state.clone();
-    apply_program(&mut next, program)?;
+    execute_program_with_rounds(&mut next, program, rounds)?;
     Ok(next)
 }
 
-pub fn apply_program(state: &mut GeneState, program: &[u8]) -> Result<(), MutationError> {
-    let _ = execute_program(state, program)?;
+pub fn apply_program_with_rounds(
+    state: &mut GeneState,
+    program: &[u8],
+    rounds: u8,
+) -> Result<(), MutationError> {
+    let _ = execute_program_with_rounds(state, program, rounds)?;
     Ok(())
+}
+
+pub fn apply_program(state: &mut GeneState, program: &[u8]) -> Result<(), MutationError> {
+    let _ = execute_program_with_rounds(state, program, DEFAULT_MUTATION_ROUNDS)?;
+    Ok(())
+}
+
+pub fn execute_program_with_rounds(
+    state: &mut GeneState,
+    program: &[u8],
+    rounds: u8,
+) -> Result<ExecutionTrace, MutationError> {
+    if state.gene.is_empty() {
+        return Err(MutationError::EmptyGene);
+    }
+    validate_state(state)?;
+    if program.len() > MAX_MUTATION_PROGRAM_BYTES {
+        return Err(MutationError::ProgramTooLong { len: program.len() });
+    }
+
+    let program_cost = estimate_program_cost(program);
+    let max_rounds = std::cmp::max(1, MAX_MUTATION_INSTRUCTION_BUDGET / program_cost);
+    let actual_rounds = std::cmp::min(rounds as usize, max_rounds) as u8;
+    let start = Instant::now();
+    let mut trace = None;
+
+    for _round in 0..actual_rounds {
+        trace = Some(execute_program(state, program)?);
+    }
+
+    let elapsed = start.elapsed();
+    tracing::debug!(rounds = actual_rounds, requested_rounds = rounds, elapsed_ms = elapsed.as_millis(), program_len = program.len(), "mutation execution");
+    if actual_rounds < rounds {
+        tracing::debug!(requested_rounds = rounds, executed_rounds = actual_rounds, "mutation soft cap reduced mutation rounds to preserve host responsiveness");
+    }
+    if elapsed.as_millis() > SOFT_CAP_DURATION_MS {
+        tracing::debug!(elapsed_ms = elapsed.as_millis(), "mutation execution exceeded soft cap duration");
+    }
+
+    Ok(trace.unwrap_or_else(|| ExecutionTrace {
+        final_ip: 0,
+        final_stack: Vec::new(),
+        final_gene_commitment_hex: crate::gene::commitment_hex(state),
+    }))
+}
+
+fn estimate_program_cost(program: &[u8]) -> usize {
+    let mut ip = 0;
+    let mut cost = 0;
+
+    while ip < program.len() {
+        let opcode = program[ip];
+        ip += 1;
+        cost += if opcode == OP_FINALIZE_GENE_HASH {
+            HASH_OPCODE_INSTRUCTION_COST
+        } else {
+            1
+        };
+        ip += match opcode {
+            OP_GENE_LOAD | OP_GENE_STORE | OP_INSERT | OP_DELETE | OP_CONSUME | OP_PRODUCE => 2,
+            OP_MUTATE_POINT | OP_TRANSCRIBE => 3,
+            OP_APPLY_MUTAGEN => 4,
+            OP_FINALIZE_GENE_HASH => 0,
+            _ => 0,
+        }
+    }
+
+    cost.max(1)
 }
 
 pub fn execute_program(

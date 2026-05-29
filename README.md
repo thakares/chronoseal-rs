@@ -5,11 +5,11 @@
 </p>
 
 <p align="center">
-  <strong>Cryptographic attestation daemon and anti-automation framework.</strong>
+  <strong>Unix-native cryptographic attestation daemon for browser session continuity.</strong>
 </p>
 
 <p align="center">
-  Privacy-preserving • Unix-native • Lightweight • WASM-powered
+  Privacy-first • Deterministic WASM parity • Silent rejection • Low overhead
 </p>
 
 <p align="center">
@@ -27,82 +27,69 @@
 
 ---
 
-ChronoSeal is a lightweight cryptographic attestation daemon designed to raise the operational cost of browser automation, scraping, replay attacks, and synthetic interaction.
+ChronoSeal is a mature Unix-native cryptographic attestation daemon for browser session continuity and anti-automation defense.
 
-Instead of relying on:
+It provides a low-overhead, privacy-respecting proof-of-runtime system built around a deterministic **Synthetic Gene Mutation Engine** and a silent, replay-resistant heartbeat protocol.
 
-* CAPTCHA systems
-* invasive browser fingerprinting
-* telemetry-heavy tracking
-* persistent identifiers
+v0.6.0 introduces the core innovation: a deterministic synthetic gene mutation chain with server/WASM parity, stronger liveness guarantees, and a domain-separated mutation commitment handshake.
 
-ChronoSeal establishes a continuous cryptographic proof-of-runtime continuity using:
+---
 
-* WASM execution
-* chained cryptographic heartbeats
+## What ChronoSeal Provides
+
+* Native Linux daemon with hardened `systemd` integration
+* Deterministic mutation engine running in both server Rust and client WASM
+* Silent rejection semantics for attacker resilience
+* Multi-backend storage: `sqlite-in-memory`, `sqlite-disk`, and `valkey`
+* CLI-first operation with rich subcommands
+* Structured logging, PID file management, graceful shutdown
+* Prometheus-compatible metrics and runtime statistics
+* Lightweight browser runtime with WASM-based attestation
+* Privacy-first design with ephemeral session state and no persistent tracking
+
+---
+
+## Why ChronoSeal
+
+ChronoSeal raises the operational cost of automation by combining:
+
+* cryptographic session continuity
+* deterministic VM execution
 * behavioral entropy validation
-* ephemeral attestation state
+* mutation commitment parity
+* silent, ambiguous rejection behavior
 
-while remaining completely invisible and frictionless to legitimate human users.
-
-v0.6.0 adds a deterministic synthetic gene mutation chain (hybrid `Vec<u8>` gene + bounded environment records) to strengthen anti-replay continuity with server/WASM parity.
-See [docs/REFRACTORING-v0.6.0.md](docs/REFRACTORING-v0.6.0.md) for the full refactoring details.
+This is not a fingerprinting or surveillance platform. ChronoSeal is designed to make automation expensive, not to collect user identities.
 
 ---
 
-# Features
+## Quick Start
 
-* CLI-first Unix-native architecture
-* Rich operational subcommands
-* Machine-readable JSON/YAML outputs
-* Hardened systemd integration
-* Graceful shutdown and signal handling
-* One-line installation workflow
-* Prometheus-compatible metrics
-* WASM-based client runtime
-* Ed25519 + Blake3 cryptographic chaining
-* Behavioral entropy validation
-* Randomized stack-machine verification
-* Deterministic synthetic gene mutation chain
-* Server/WASM mutation parity checks
-* Silent rejection model
-* SQLite-backed ephemeral sessions
-* Configurable runtime DB backend selection (`db_type`)
-* Connection-pooled runtime architecture
-* Lightweight deployment footprint
-* Docker and native deployment support
-* Adaptive trust scoring
-* GPLv3 licensed
-
----
-
-# Quick Start
-
-## Install
+### Install
 
 ```bash
 sudo bash scripts/install.sh
 ```
 
-## Check Status
+### Verify status
 
 ```bash
 chronoseal status --format json
 ```
 
-## Health Probe
+### Health probe
 
 ```bash
 chronoseal health
 ```
 
-## View Metrics
+### View metrics
 
 ```bash
 chronoseal metrics
 ```
 
-## View Logs
+### Follow logs
 
 ```bash
 sudo journalctl -u chronoseal -f
@@ -110,13 +97,13 @@ sudo journalctl -u chronoseal -f
 
 ---
 
-# CLI
+## CLI Overview
 
 ```bash
 chronoseal --help
 ```
 
-## Available Commands
+### Available commands
 
 | Command      | Description                                |
 | ------------ | ------------------------------------------ |
@@ -151,635 +138,89 @@ chronoseal status --format json
 
 ---
 
-# How It Works
+## Architecture Summary
 
-ChronoSeal establishes a continuous cryptographic proof-of-presence for browser sessions.
+ChronoSeal is composed of three primary runtime components:
 
-The system is inspired by heartbeat validation models used in embedded and distributed systems.
+* `shared/` — shared cryptographic primitives, hash chaining, gene model, and mutation engine used by both server and WASM
+* `server/` — Axum-based Unix-native daemon, session lifecycle, storage, trust evaluation, and `POST /init` / `POST /hb` routes
+* `wasm/` — browser runtime for key generation, signature creation, VM execution, and mutation preview/commit lifecycle
 
-## Session Flow
+### Key innovations in v0.6.0
 
-```text
-Browser                                    Server
-  │                                           │
-  │  WASM loads, generates Ed25519 keypair    │
-  │  Private key never leaves WASM memory     │
-  │                                           │
-  ├──── POST /init  { public_key } ──────────►│
-  │◄─── { session_id, salt, opcodes_b64, H0,  │
-  │     mutation_step, mutation_order_b64 } ──┤
-  │                                           │
-  │ Every 12–25s (randomized):                │
-  │  ┌─ Collect behavioral entropy            │
-  │  ├─ Execute verification VM opcodes       │
-  │  ├─ Preview mutation commitment           │
-  │  ├─ Attach mutation_step + commitment     │
-  │  ├─ Advance Blake3 hash chain             │
-  │  └─ Sign payload using Ed25519            │
-  │                                           │
-  ├──── POST /hb  { signed_payload } ────────►│
-  │◄─── { status, next_salt,                  │
-  │     next_mutation_step,                   │
-  │     next_mutation_order_b64 } ────────────┤
-  │                                           │
-  │ Invalid sessions silently rejected        │
-  │ (`status=ok` without next_* fields)       │
-```
-
-The server validates:
-
-* signature authenticity
-* heartbeat continuity
-* replay resistance
-* mutation step parity
-* mutation commitment parity
-* behavioral entropy
-* timestamp validity
-* fingerprint sanity
+* Synthetic Gene Mutation Engine with deterministic, shared opcode semantics
+* Server-side gene commitment validation on every heartbeat
+* `mutation_step` and `mutation_order_b64` handshake in init and heartbeat responses
+* `db_type` runtime backend selection with SQLite and Valkey support
 
 ---
 
-# Security Model
+## How ChronoSeal Works
 
-## What ChronoSeal Protects Against
+ChronoSeal establishes continuity by chaining signed heartbeats between client and server.
 
-| Threat                   | Mechanism                             |
-| ------------------------ | ------------------------------------- |
-| Replay attacks           | Blake3 chained heartbeat continuity   |
-| Signature forgery        | Ed25519 keypair generated inside WASM |
-| Session cloning          | Ephemeral session-bound keypairs      |
-| Static scraping          | Runtime participation requirements    |
-| Naive browser automation | Behavioral continuity validation      |
-| Timestamp replay         | Drift-window enforcement              |
-| Session flooding         | Per-session rate limiting             |
-| Mutation tampering       | Server-side commitment parity checks  |
+### Session flow
 
----
+1. Client loads the WASM runtime and generates an Ed25519 keypair in WASM memory.
+2. Client calls `POST /init` with the public key.
+3. Server creates an ephemeral session and returns a `session_id`, initial salt, VM program, and mutation order metadata.
+4. Client executes the VM program, collects browser entropy, previews the mutation commitment, signs the heartbeat payload, and sends `POST /hb`.
+5. Server verifies signature, hash chain continuity, behavioral sanity, mutation step parity, and gene commitment before returning the next salt and mutation order.
 
-## Silent Rejection Model
+### Silent failure model
 
-ChronoSeal intentionally avoids explicit rejection semantics.
-
-Invalid sessions may still receive:
-
-```json
-{ "status": "ok" }
-```
-
-This prevents:
-
-* oracle-style probing
-* protocol learning
-* easy automation tuning
-* behavioral enumeration
+Invalid heartbeats are returned as `{"status":"ok"}` without mutation fields. This avoids giving attackers explicit feedback.
 
 ---
 
-## What ChronoSeal Does Not Claim
+## Storage Backends
 
-ChronoSeal is a cost-raising mechanism, not an impenetrable barrier.
+ChronoSeal supports multiple runtime storage backends configured via `db_type`:
 
-A sufficiently motivated adversary with:
-
-* real browsers
-* genuine input devices
-* enough reverse engineering effort
-
-can eventually bypass the system.
-
-The goal is to make automation:
-
-* expensive
-* operationally complex
-* difficult to scale
-* harder to replay deterministically
+* `sqlite-in-memory` — default ephemeral session storage
+* `sqlite-disk` — persisted SQLite storage on disk
+* `valkey` — alternative backend compatibility mode for future high-performance storage
 
 ---
 
-# Architecture
+## Deployment
 
-```text
-chronoseal-rs/
-├── shared/          Shared types, hash chain, gene + mutation engine
-├── server/          Axum HTTP daemon
-│   ├── routes/      API routes
-│   ├── session.rs   Session lifecycle + mutation parity checks
-│   ├── crypto.rs    Ed25519 verification
-│   ├── trust.rs     Behavioral validation
-│   ├── fingerprint/ Browser sanity validation
-│   ├── vm.rs        Random opcode generator
-│   ├── ratelimit.rs Token bucket limiter
-│   ├── cleanup.rs   Session expiration lifecycle
-│   └── metrics.rs   Prometheus metrics
-├── wasm/            Rust → WASM runtime
-│   ├── crypto.rs    Signing + hash chaining
-│   ├── vm.rs        Stack-machine executor
-│   └── vm_extensions.rs Gene mutation preview/commit
-├── frontend/        Lightweight JS integration
-├── scripts/         Build/install/dev scripts
-└── docs/            Project documentation
-```
+ChronoSeal is intended to run as a systemd-managed Unix daemon with strict sandboxing and observable metrics.
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for build, installation, and production deployment guidance.
 
 ---
 
-# Stack Machine
+## Security Model
 
-ChronoSeal includes a lightweight randomized stack-machine execution engine.
+ChronoSeal is a cost-raising attestations layer, not a perfect bot blocker.
 
-The server generates a randomized opcode program during session initialization.
+It protects against:
 
-The client executes this program on every heartbeat and includes the resulting stack state in the signed payload.
+* replay attacks
+* session cloning
+* invalid signature injection
+* broken hash chain continuity
+* mutation tampering
+* simple synthetic mouse and browser automation
 
-This makes heartbeat payloads structurally dynamic.
+It does not attempt to protect against:
 
-## Supported Opcodes
+* real users acting as bots
+* server-side application vulnerabilities
+* fully resourced adversaries with real browsers and hardware input devices
 
-| Opcode | Mnemonic | Effect                  |
-| ------ | -------- | ----------------------- |
-| `0x00` | PUSH     | Push literal            |
-| `0x01` | ADD      | Wrapping addition       |
-| `0x02` | SUB      | Wrapping subtraction    |
-| `0x03` | MUL      | Wrapping multiplication |
-| `0x04` | XOR      | Bitwise XOR             |
-| `0x05` | AND      | Bitwise AND             |
-| `0x06` | OR       | Bitwise OR              |
-| `0x07` | ROT      | Rotate left             |
-| `0x08` | NOT      | Unary inversion         |
-| `0x09` | HASH     | Blake3 stack hash       |
-
-## Mutation Opcodes (v0.6.0)
-
-| Opcode | Mnemonic             | Effect |
-| ------ | -------------------- | ------ |
-| `0x23` | GENE_LOAD            | Push `gene[idx]` |
-| `0x24` | GENE_STORE           | Pop and store at `gene[idx]` |
-| `0x25` | MUTATE_POINT         | Apply wrapping byte delta at index |
-| `0x26` | INSERT               | Insert popped byte at index |
-| `0x27` | DELETE               | Delete byte at index and push removed value |
-| `0x28` | TRANSCRIBE           | Push deterministic transcription hash |
-| `0x29` | APPLY_MUTAGEN        | Mix environment symbol quantity into gene byte |
-| `0x2A` | FINALIZE_GENE_HASH   | Push commitment-derived `u32` |
-| `0x2B` | CONSUME              | Pop amount, subtract environment quantity |
-| `0x2C` | PRODUCE              | Pop amount, add environment quantity |
+See [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) for the full threat model.
 
 ---
 
-# Hash Chain
-
-ChronoSeal uses Blake3 chained continuity validation.
-
-## Initial Hash
-
-```text
-H(0) = Blake3( session_id ║ public_key ║ salt₀ )
-```
-
-## Heartbeat Progression
-
-```text
-H(n) = Blake3(
-    saltₙ₋₁ ║
-    H(n-1) ║
-    timestamp ║
-    Blake3(entropy_json) ║
-    Blake3(stack_json)
-)
-```
-
-Each heartbeat depends on:
-
-* prior continuity
-* prior server-issued salt
-* behavioral entropy
-* VM execution result
-* timestamp progression
-
----
-
-# Signature Canonicalization
-
-Heartbeat payloads are serialized into canonical key order before signing.
-
-The server reconstructs payloads identically before:
-
-* Ed25519 verification
-* hash progression validation
-
-This prevents:
-
-* serialization inconsistencies
-* ambiguous signing layouts
-* malformed payload tricks
-
----
-
-# SQLite Schema
-
-```sql
-CREATE TABLE IF NOT EXISTS sessions (
-    session_id            TEXT     PRIMARY KEY,
-    public_key            BLOB     NOT NULL,
-    salt                  BLOB     NOT NULL,
-    last_hash             BLOB     NOT NULL,
-    chain_length          INTEGER  NOT NULL DEFAULT 1,
-    created_at            INTEGER  NOT NULL,
-    last_seen             INTEGER  NOT NULL,
-    expires_at            INTEGER  NOT NULL,
-    gene                  BLOB     NOT NULL DEFAULT X'',
-    environment           BLOB     NOT NULL DEFAULT X'',
-    pending_mutation      BLOB     NOT NULL DEFAULT X'',
-    pending_mutation_step INTEGER  NOT NULL DEFAULT 0
-);
-```
-
-ChronoSeal intentionally uses ephemeral session persistence.
-
-Session continuity is designed to reset transparently.
-
----
-
-# v0.6.0 — Synthetic Gene Mutation System
-
-## Overview & Motivation
-
-ChronoSeal v0.6.0 introduces a synthetic mutation chain model to strengthen attestation liveness and anti-replay guarantees while preserving privacy-first behavior. The core model combines:
-
-* a primary byte-oriented gene buffer (`Vec<u8>`), and
-* a bounded secondary environment map (`Vec<(u16 symbol, u32 quantity)>`).
-
-Each heartbeat now carries deterministic mutation progression evidence (`mutation_step`, `gene_commitment`) that is validated server-side against the exact server-issued mutation order. This design increases attacker workload by coupling cryptographic chain continuity with stateful deterministic mutation parity.
-
-## Architectural Goals
-
-1. Keep runtime behavior deterministic across server and WASM execution.
-2. Preserve ephemerality and low operational complexity.
-3. Minimize additional latency on the heartbeat path.
-4. Improve protocol resistance against replay and mutation tampering.
-5. Maintain a maintainable codebase with explicit invariants and focused modules.
-
-## Design Decisions
-
-**Shared mutation engine** — Mutation opcode semantics live in `shared/src/vm_extensions.rs` to guarantee server/client parity from one implementation.
-
-**Deterministic gene commitment** — A domain-separated BLAKE3 commitment (`chronoseal/gene/v1`) binds both gene bytes and sorted environment records.
-
-**Bounded mutation complexity** — Mutation program length is capped (`MAX_MUTATION_PROGRAM_BYTES`) and environment cardinality is capped (`MAX_ENV_RECORDS`).
-
-**Strict validation on ingest** — Environment payloads are validated for sortedness, uniqueness, non-zero quantity, and length constraints.
-
-**Protocol-level mutation handshake** — `InitResponse` and `Heartbeat` payloads now include mutation step/order and commitment fields.
-
-**DB backend control via `db_type`** — Server CLI/config now supports:
-
-* `sqlite-in-memory` (default)
-* `sqlite-in-disk` (active; uses `db_path`)
-* `valkey` (active compatibility mode; currently falls back to in-memory)
-
-## Implementation
-
-1. Gene model + deterministic commitment in `shared/gene.rs`.
-2. v0.6.0 mutation opcode set in shared VM extensions.
-3. Mutation state persisted per session (`gene`, `environment`, `pending_mutation`, `pending_mutation_step`).
-4. Protocol schema extended for mutation fields in init/heartbeat exchange.
-5. Mutation step + commitment parity validated before accepting heartbeat updates.
-6. WASM preview/commit mutation lifecycle mirrors server behavior.
-7. `db_type` CLI/config flow and runtime backend initialization strategy.
-8. Migration-safe schema extension (column existence checks + index creation).
-
-## Testing Strategy
-
-ChronoSeal v0.6.0 test coverage is organized across unit, integration, and randomized/fuzz-style validation.
-
-**Unit, integration, and property tests:**
-
-* Unit tests for gene invariants and encoding/decoding.
-* Unit tests for every mutation opcode with stack-effect assertions.
-* Integration tests for full session lifecycle and heartbeat acceptance/rejection paths.
-* Table-driven randomized tests and fuzz-style random bytecode tests to validate deterministic failure/success symmetry.
-
-**Server-client parity testing:**
-
-* Shared opcode engine parity tests across seeded mutation sequences.
-* Multi-step mutation chain test (`test_mutation_chain`) asserting identical server/client final state.
-* 10+ heartbeat deterministic simulation tests in session integration suite.
-
-**Evasion / attack simulation testing:**
-
-* Replay attack simulation.
-* Mutation step mismatch rejection.
-* Mutation commitment tampering rejection.
-* Malformed server mutation payload rejection.
-* Stack underflow / unknown opcode / truncated program rejection.
-
-**Performance regression testing:**
-
-* Bounded execution checks through capped program size and bounded record counts.
-* Timing smoke regression test for mutation execution loops.
-* End-to-end heartbeat test coverage to detect behavior regressions on hot paths.
-
-## Security Analysis
-
-**Replay resistance** — Heartbeats are now tied to both chain hash and mutation step progression.
-
-**Mutation tampering resistance** — Server recomputes candidate gene state from authoritative pending mutation program and rejects commitment mismatch.
-
-**Protocol ambiguity reduction** — Canonical signing payload includes mutation fields, reducing exploitable unsigned state.
-
-**Input hardening** — Program size limits, stack underflow checks, and strict environment decoding reduce parser abuse and malformed payload amplification.
-
-**Deterministic failure semantics** — Invalid mutation instructions fail predictably and symmetrically across server and WASM paths.
-
-## Performance Considerations
-
-* Mutation instructions are lightweight and mostly O(1); only `INSERT`/`DELETE` are O(n) but bounded by max gene size.
-* Environment operations use sorted-vector binary search with tight upper bound (`MAX_ENV_RECORDS`).
-* Commitment hashing is linear in gene size and record count, both bounded.
-* Shared engine avoids duplicate logic and divergence-induced debugging overhead.
-
-## Migration & Backward Compatibility
-
-* Schema migration is additive; new columns are created when missing.
-* Existing deployments without mutation fields require updated client+server pair for heartbeat compatibility.
-* `db_type` defaults to in-memory to preserve ephemeral behavior.
-* `sqlite-in-disk` is now directly usable via `db_path`.
-* `valkey` currently runs in compatibility mode (in-memory fallback) to avoid startup failure while preserving CLI contract.
-
-## Risks & Mitigations
-
-| Risk | Mitigation |
-| ---- | ---------- |
-| State divergence between server and client | Shared opcode engine + deterministic seeded parity tests + multi-heartbeat integration tests |
-| Mutation opcode abuse via malformed programs | Strict parsing, length caps, explicit underflow/unknown-opcode errors |
-| Performance regressions | Bounded structures, smoke timing tests, focused hot-path validation |
-| Backend confusion during `db_type` rollout | Explicit CLI command (`chronoseal db-type`), config output visibility, and clear runtime compatibility behavior |
-
----
-
-# Runtime Architecture
-
-## Server Runtime
-
-* Rust
-* Axum
-* Tokio
-* SQLite (`sqlite-in-memory` / `sqlite-in-disk`)
-* `db_type=valkey` compatibility mode (falls back to in-memory in v0.6.0)
-* `r2d2`
-* `thiserror`
-
-## Browser Runtime
-
-* Rust → WASM
-* Ed25519 signing
-* Blake3 chaining
-* Stack-machine execution
-
----
-
-# Deployment
-
-## Recommended Installation
-
-```bash
-sudo bash scripts/install.sh
-```
-
-The installer:
-
-* creates `chronoseal` service user
-* builds release artifacts
-* installs frontend assets
-* deploys hardened systemd service
-* enables and starts daemon
-
----
-
-## Manual Installation
-
-```bash
-bash scripts/build.sh
-
-sudo cp target/release/chronoseal /usr/local/bin/
-sudo cp chronoseal.service /etc/systemd/system/
-
-sudo systemctl daemon-reload
-sudo systemctl enable --now chronoseal
-```
-
----
-
-## Docker
-
-```bash
-docker compose up -d --build
-```
-
----
-
-# Development
-
-## Full Build
-
-```bash
-bash scripts/build.sh
-```
-
-## Development Mode
-
-```bash
-bash scripts/dev.sh
-```
-
-## Direct Execution
-
-```bash
-cargo run -p server -- run --bind 127.0.0.1:3000
-```
-
----
-
-# Prerequisites
-
-* Rust stable ≥ 1.87
-* `wasm-pack`
-* NodeJS (optional frontend tooling)
-
-Install `wasm-pack`:
-
-```bash
-cargo install wasm-pack
-```
-
-Build backend:
-
-```bash
-cargo run -p server --release
-```
-
-Build WASM:
-
-```bash
-wasm-pack build wasm --target web --release
-```
-
----
-
-# Configuration
-
-## Precedence
-
-```text
-CLI flags > CHRONOSEAL_* environment variables > config file > defaults
-```
-
-## Default Config Locations
-
-```text
-/etc/chronoseal/config.toml
-$XDG_CONFIG_HOME/chronoseal/config.toml
-~/.config/chronoseal/config.toml
-```
-
-## Runtime State
-
-```text
-~/.local/state/chronoseal/
-```
-
-## Database Backend Selection (v0.6.0)
-
-Choose backend with config, env var, or CLI flag:
-
-* Config: `db_type = "sqlite-in-memory" | "sqlite-in-disk" | "valkey"`
-* Env: `CHRONOSEAL_DB_TYPE=...`
-* CLI: `chronoseal run --db-type sqlite-in-disk --db-path /var/lib/chronoseal/chronoseal.sqlite`
-
-Inspect backend status:
-
-```bash
-chronoseal db-type --format text
-```
-
----
-
-# Observability
-
-ChronoSeal exposes:
-
-* health probes
-* runtime statistics
-* Prometheus metrics
-
-## Metrics Example
-
-```bash
-chronoseal metrics
-```
-
-```text
-# HELP chronoseal_sessions Active ChronoSeal sessions
-# TYPE chronoseal_sessions gauge
-chronoseal_sessions 1
-```
-
----
-
-# Lightweight Runtime
-
-Current release artifacts:
-
-```text
-chronoseal             ~8.5 MB
-chronoseal_wasm.wasm  ~719 KB
-```
-
-ChronoSeal intentionally avoids:
-
-* heavyweight frontend frameworks
-* Electron-style packaging
-* telemetry-heavy dependencies
-* oversized runtime models
-
----
-
-# Philosophy
-
-ChronoSeal is intentionally not:
-
-* a surveillance framework
-* invasive browser fingerprinting
-* a CAPTCHA replacement
-* a telemetry ecosystem
-
-ChronoSeal is:
-
-* a cryptographic attestation runtime
-* a behavioral continuity engine
-* a proof-of-runtime framework
-* a lightweight Unix-native daemon
-
----
-
-# Contributing
-
-## Requirements
-
-* Rust stable
-* wasm-pack
-* NodeJS (optional frontend tooling)
-
-## Development Workflow
-
-```bash
-cargo fmt
-cargo clippy
-cargo test
-```
-
-## Guidelines
-
-* Keep security-sensitive logic inside Rust/WASM
-* Avoid placing trust logic in JavaScript
-* Preserve silent-failure behavior
-* Maintain deterministic protocol serialization
-
----
-
-# Security Policy
-
-## Reporting Vulnerabilities
-
-Please do not disclose security vulnerabilities publicly before responsible disclosure.
-
-Contact maintainers privately with:
-
-* reproduction steps
-* affected versions
-* impact assessment
-* proof-of-concept if applicable
-
-## Scope
-
-ChronoSeal intentionally operates as:
-
-* anti-automation middleware
-* behavioral attestation layer
-* cryptographic continuity verifier
-
-Security hardening evolves continuously.
-
----
-
-# Language Breakdown
-
-| Language   | Share  |
-| ---------- | ------ |
-| Rust       | 82.4%  |
-| JavaScript | 13.7%  |
-| Shell      | 1.6%   |
-| Dockerfile | 1.4%   |
-| HTML       | 0.9%   |
-
----
-
-Topics: `rust` · `cryptography` · `wasm` · `antibot` · `browser-security` · `behavioral-analysis` · `anti-scraping` · `headless-detection`
+## Further Reading
+
+* [Architecture](docs/ARCHITECTURE.md)
+* [API Reference](docs/API.md)
+* [Deployment](docs/DEPLOYMENT.md)
+* [Threat Model](docs/THREAT_MODEL.md)
+* [Design Philosophy](docs/DESIGN-PHILOSOPHY.md)
+* [Privacy Policy](docs/PRIVACY%20POLICY.md)
+* [WASM Build](docs/WASM_BUILD.md)
+* [Refactoring v0.6.0](docs/REFRACTORING-v0.6.0.md)

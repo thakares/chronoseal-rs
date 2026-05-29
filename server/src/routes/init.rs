@@ -9,7 +9,6 @@ pub async fn handler(
     Json(payload): Json<InitRequest>,
 ) -> Result<Json<InitResponse>, SessionError> {
     let config = state.get_config();
-    let conn = state.db_pool.get()?;
-    let resp = crate::session::create_session(&conn, &config, &payload.public_key)?;
+    let resp = crate::session::create_session(&state.db_pool, &config, &payload.public_key)?;
     Ok(Json(resp))
 }
