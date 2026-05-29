@@ -19,6 +19,9 @@ pub enum SessionError {
 
     #[error("Invalid public key length")]
     InvalidPublicKeyLength,
+
+    #[error("Invalid gene configuration: {0}")]
+    InvalidGeneConfiguration(String),
 }
 
 impl IntoResponse for SessionError {
@@ -65,4 +68,16 @@ pub enum VerificationError {
 
     #[error("Fingerprint validation failed: {0}")]
     FingerprintFailed(String),
+
+    #[error("Mutation step mismatch: expected {expected}, got {got}")]
+    MutationStepMismatch { expected: u64, got: u64 },
+
+    #[error("Mutation commitment mismatch")]
+    MutationCommitmentMismatch,
+
+    #[error("Mutation program error: {0}")]
+    MutationProgram(String),
+
+    #[error("Gene state error: {0}")]
+    GeneState(String),
 }

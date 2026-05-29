@@ -1,4 +1,5 @@
 use crate::cli::{RunArgs, RuntimeArgs};
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use std::{
     env, fs, io,
@@ -6,10 +7,30 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+#[value(rename_all = "kebab-case")]
+pub enum DbType {
+    SqliteInMemory,
+    SqliteInDisk,
+    Valkey,
+}
+
+impl DbType {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::SqliteInMemory => "sqlite-in-memory",
+            Self::SqliteInDisk => "sqlite-in-disk",
+            Self::Valkey => "valkey",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub bind: String,
+    pub db_type: DbType,
     pub pid_file: PathBuf,
     pub db_path: PathBuf,
     pub frontend_dir: PathBuf,
@@ -24,12 +45,14 @@ pub struct Config {
     pub max_mouse_avg_speed: f64,
     pub min_pause_count: u32,
     pub require_mouse_activity: bool,
+    pub gene_size: usize,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             bind: "0.0.0.0:3000".to_string(),
+            db_type: DbType::SqliteInMemory,
             pid_file: PathBuf::from("/run/chronoseal.pid"),
             db_path: default_state_dir().join("chronoseal.sqlite"),
             frontend_dir: PathBuf::from("/usr/share/chronoseal/frontend"),
@@ -44,6 +67,7 @@ impl Default for Config {
             max_mouse_avg_speed: 2.0,
             min_pause_count: 1,
             require_mouse_activity: true,
+            gene_size: shared::constants::DEFAULT_GENE_SIZE,
         }
     }
 }
@@ -82,6 +106,9 @@ impl Config {
 
     pub fn apply_run_args(&mut self, args: &RunArgs) {
         self.apply_runtime_args(&args.runtime);
+        if let Some(db_type) = args.db_type {
+            self.db_type = db_type;
+        }
         if let Some(db_path) = &args.db_path {
             self.db_path = db_path.clone();
         }
@@ -100,12 +127,25 @@ impl Config {
                 bind: self.bind.clone(),
                 source,
             })?;
+        if !(1..=shared::constants::MAX_GENE_SIZE).contains(&self.gene_size) {
+            return Err(ConfigError::InvalidGeneSize {
+                size: self.gene_size,
+            });
+        }
         Ok(())
     }
 
     fn apply_env(&mut self) {
         if let Ok(value) = env::var("CHRONOSEAL_BIND") {
             self.bind = value;
+        }
+        if let Ok(value) = env::var("CHRONOSEAL_DB_TYPE") {
+            self.db_type = match value.as_str() {
+                "sqlite-in-memory" => DbType::SqliteInMemory,
+                "sqlite-in-disk" => DbType::SqliteInDisk,
+                "valkey" => DbType::Valkey,
+                _ => self.db_type,
+            };
         }
         if let Ok(value) = env::var("CHRONOSEAL_PID_FILE") {
             self.pid_file = PathBuf::from(value);
@@ -169,6 +209,11 @@ impl Config {
                 self.require_mouse_activity = val;
             }
         }
+        if let Ok(value) = env::var("CHRONOSEAL_GENE_SIZE") {
+            if let Ok(val) = value.parse() {
+                self.gene_size = val;
+            }
+        }
     }
 }
 
@@ -186,6 +231,9 @@ pub enum ConfigError {
         bind: String,
         source: std::net::AddrParseError,
     },
+    InvalidGeneSize {
+        size: usize,
+    },
 }
 
 impl std::fmt::Display for ConfigError {
@@ -197,6 +245,13 @@ impl std::fmt::Display for ConfigError {
             }
             Self::InvalidBind { bind, source } => {
                 write!(f, "invalid bind address {bind}: {source}")
+            }
+            Self::InvalidGeneSize { size } => {
+                write!(
+                    f,
+                    "invalid gene size {size}; expected 1..={}",
+                    shared::constants::MAX_GENE_SIZE
+                )
             }
         }
     }
@@ -237,4 +292,56 @@ fn default_state_dir() -> PathBuf {
         return PathBuf::from(home).join(".local/state/chronoseal");
     }
     PathBuf::from("/var/lib/chronoseal")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default_db_type_is_sqlite_in_memory() {
+        let cfg = Config::default();
+        assert_eq!(cfg.db_type, DbType::SqliteInMemory);
+    }
+
+    #[test]
+    fn test_apply_run_args_overrides_db_type() {
+        let mut cfg = Config::default();
+        let args = crate::cli::RunArgs {
+            runtime: crate::cli::RuntimeArgs {
+                bind: None,
+                pid_file: None,
+            },
+            db_type: Some(DbType::SqliteInDisk),
+            db_path: None,
+            frontend_dir: None,
+            log_file: None,
+        };
+        cfg.apply_run_args(&args);
+        assert_eq!(cfg.db_type, DbType::SqliteInDisk);
+    }
+
+    #[test]
+    fn test_toml_parses_db_type_kebab_case() {
+        let raw = r#"
+bind = "127.0.0.1:3000"
+db_type = "valkey"
+pid_file = "/tmp/pid"
+db_path = "/tmp/db.sqlite"
+frontend_dir = "."
+heartbeat_min_interval_ms = 12000
+heartbeat_max_interval_ms = 25000
+expiration_minutes = 30
+rate_limit_count = 5
+rate_limit_window_secs = 10
+max_timestamp_drift_ms = 30000
+min_mouse_total_dist = 1.0
+max_mouse_avg_speed = 2.0
+min_pause_count = 1
+require_mouse_activity = true
+gene_size = 512
+"#;
+        let cfg: Config = toml::from_str(raw).unwrap();
+        assert_eq!(cfg.db_type, DbType::Valkey);
+    }
 }

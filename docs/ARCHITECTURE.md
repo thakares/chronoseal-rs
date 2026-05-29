@@ -1,5 +1,7 @@
 # ChronoSeal — Architecture
 
+> Note (v0.6.0): Synthetic Gene Mutation flow and mutation handshake updates are documented in [REFRACTORING-v0.6.0.md](REFRACTORING-v0.6.0.md) and [API.md](API.md).
+
 ## Overview
 
 ChronoSeal is a stateless, cryptographic browser attestation framework. Its
@@ -42,7 +44,7 @@ synchronisation burden alone makes scaled operation expensive.
 ### High-Level Design
 
 - **Core**: Rust + Axum (async web framework)
-- **Storage**: In-memory SQLite (fast, ephemeral per process — restarts are clean)
+- **Storage**: `db_type` selectable (`sqlite-in-memory`, `sqlite-in-disk`, `valkey` compatibility mode)
 - **Client**: WASM + Rust (runs in browser for proof generation)
 - **Security Model**: Behavioral analysis + hash chaining + entropy scoring
 - **Deployment**: Static musl binary, systemd service, optional Docker

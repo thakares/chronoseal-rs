@@ -53,7 +53,7 @@ impl GlobalArgs {
 pub enum Command {
     /// Run the ChronoSeal daemon.
     #[command(
-        after_help = "Examples:\n  chronoseal run\n  chronoseal run --bind 127.0.0.1:3000 --frontend-dir /srv/chronoseal/frontend\n  CHRONOSEAL_BIND=0.0.0.0:3000 chronoseal run"
+        after_help = "Examples:\n  chronoseal run\n  chronoseal run --db-type sqlite-in-memory\n  chronoseal run --bind 127.0.0.1:3000 --frontend-dir /srv/chronoseal/frontend\n  CHRONOSEAL_BIND=0.0.0.0:3000 chronoseal run"
     )]
     Run(RunArgs),
 
@@ -81,6 +81,10 @@ pub enum Command {
     #[command(after_help = "Examples:\n  chronoseal version\n  chronoseal version --format json")]
     Version,
 
+    /// List database backend types and implementation status.
+    #[command(after_help = "Examples:\n  chronoseal db-type\n  chronoseal db-type --format json")]
+    DbType,
+
     /// Print Prometheus metrics from the running daemon.
     #[command(
         after_help = "Examples:\n  chronoseal metrics\n  chronoseal metrics --bind 127.0.0.1:3000"
@@ -102,6 +106,11 @@ pub enum Command {
 pub struct RunArgs {
     #[command(flatten)]
     pub runtime: RuntimeArgs,
+
+    /// Database backend selection.
+    /// sqlite-in-memory is active. sqlite-in-disk and valkey are planned (TODO).
+    #[arg(long, env = "CHRONOSEAL_DB_TYPE", value_enum)]
+    pub db_type: Option<crate::config::DbType>,
 
     /// SQLite database path. Use ':memory:' for ephemeral state.
     #[arg(long, env = "CHRONOSEAL_DB_PATH")]

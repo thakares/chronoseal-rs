@@ -39,7 +39,12 @@ Content-Type: application/json
   "salt":          "32-char hex string (16 bytes)",
   "opcodes_b64":   "base64-encoded VM program (8–16 opcodes)",
   "initial_hash":  "64-char hex string (32 bytes Blake3)",
-  "expires_at":    1234567890123
+  "expires_at":    1234567890123,
+  "heartbeat_min_interval_ms": 12000,
+  "heartbeat_max_interval_ms": 25000,
+  "gene_size": 512,
+  "mutation_step": 1,
+  "mutation_order_b64": "base64-encoded mutation program"
 }
 ```
 
@@ -50,6 +55,11 @@ Content-Type: application/json
 | `opcodes_b64` | `string` | Base64 VM program; execute with `run_program()` on every heartbeat |
 | `initial_hash` | `string` | `H(0) = Blake3(session_id ║ pub_key ║ salt)`; the first `prev_hash` |
 | `expires_at` | `number` | Unix timestamp in milliseconds; session expires after 30 minutes of inactivity |
+| `heartbeat_min_interval_ms` | `number` | Lower bound for randomized heartbeat scheduling |
+| `heartbeat_max_interval_ms` | `number` | Upper bound for randomized heartbeat scheduling |
+| `gene_size` | `number` | Initial synthetic gene size used by server and WASM (default 512) |
+| `mutation_step` | `number` | Server-issued mutation order step expected on next heartbeat |
+| `mutation_order_b64` | `string` | Base64-encoded mutation opcode program for the current step |
 
 #### Error
 
@@ -89,6 +99,8 @@ Content-Type: application/json
     "devicePixelRatio":   "2",
     "hardwareConcurrency": 8
   },
+  "mutation_step": 1,
+  "gene_commitment": "64-char hex Blake3 commitment",
   "signature": "128-char hex Ed25519 signature"
 }
 ```
@@ -104,6 +116,8 @@ Content-Type: application/json
 | `fingerprint.aspectRatio` | `string` | `(screen.width / screen.height).toFixed(10)` |
 | `fingerprint.devicePixelRatio` | `string` | `String(window.devicePixelRatio)` |
 | `fingerprint.hardwareConcurrency` | `number` | `navigator.hardwareConcurrency \|\| 1` |
+| `mutation_step` | `number` | Must match server-side pending mutation step |
+| `gene_commitment` | `string` | Commitment of the locally previewed candidate gene after applying `mutation_order_b64` |
 | `signature` | `string` | Hex-encoded 64-byte Ed25519 signature over the canonical payload |
 
 #### Canonical Signing Payload
@@ -115,6 +129,8 @@ alphabetically. Nested object keys follow their natural serialisation order.
 {
   "entropyData":  { "events": [{ "t": …, "x": …, "y": … }] },
   "fingerprint":  { "aspectRatio": "…", "devicePixelRatio": "…", "hardwareConcurrency": … },
+  "geneCommitment":"…",
+  "mutationStep": …,
   "prevHash":     "…",
   "sessionId":    "…",
   "stackState":   { "ip": …, "stack": […] },
@@ -123,22 +139,28 @@ alphabetically. Nested object keys follow their natural serialisation order.
 ```
 
 Note: field names in the signing payload use camelCase (`sessionId`,
-`prevHash`, `entropyData`, `stackState`) while the request body uses
-snake_case (`session_id`, `prev_hash`, `entropy_data`, `stack_state`).
+`prevHash`, `entropyData`, `stackState`, `mutationStep`, `geneCommitment`)
+while the request body uses snake_case (`session_id`, `prev_hash`,
+`entropy_data`, `stack_state`, `mutation_step`, `gene_commitment`).
 
 #### Response `200 OK` — Accepted
 
 ```json
 {
   "status":    "ok",
-  "next_salt": "32-char hex string (16 bytes)"
+  "next_salt": "32-char hex string (16 bytes)",
+  "next_mutation_step": 2,
+  "next_mutation_order_b64": "base64-encoded mutation program"
 }
 ```
 
 The client must:
-1. Capture `sentSalt = currentSalt` before updating.
-2. Set `currentSalt = next_salt`.
-3. Compute `prevHash = compute_next_hash(prevHash, timestamp, entropyJson, stackStateJson, sentSalt)`.
+1. Preview commitment locally from `mutation_order_b64` and send it in the heartbeat.
+2. Capture `sentSalt = currentSalt` before updating.
+3. Set `currentSalt = next_salt`.
+4. Compute `prevHash = compute_next_hash(prevHash, timestamp, entropyJson, stackStateJson, sentSalt)`.
+5. Commit the previewed gene state.
+6. Replace pending mutation values with `next_mutation_step` and `next_mutation_order_b64`.
 
 #### Response `200 OK` — Rejected
 
@@ -148,7 +170,8 @@ The client must:
 }
 ```
 
-`next_salt` is absent. The response body is intentionally identical in
+`next_salt`, `next_mutation_step`, and `next_mutation_order_b64` are absent.
+The response body is intentionally identical in
 structure. Rejections are silent — the caller cannot distinguish a validation
 failure from a rate limit hit or an expired session.
 
@@ -168,6 +191,8 @@ Heartbeats are rejected (silently) if any of the following checks fail:
 | Session expired | `current_time_ms > expires_at` |
 | Signature invalid | Ed25519 verification fails against stored public key |
 | Hash chain broken | `hex(prev_hash) ≠ stored last_hash` |
+| Mutation step mismatch | `mutation_step ≠ pending_mutation_step` |
+| Mutation commitment mismatch | `gene_commitment` does not match server-computed candidate commitment |
 | Timestamp drift | `\|server_now_ms - timestamp\| > 30 000` |
 | Insufficient mouse events | `events.len() < 3` |
 | Insufficient mouse distance | `total_dist < 10.0 px` |
@@ -202,7 +227,7 @@ Rust types (serde derive, no custom ordering).
 
 ## WASM API
 
-The WASM module (`antibot_wasm`) exports the following functions to JavaScript:
+The WASM module (`chronoseal_wasm`) exports the following functions to JavaScript:
 
 | Function | Signature | Description |
 |---|---|---|
@@ -211,6 +236,11 @@ The WASM module (`antibot_wasm`) exports the following functions to JavaScript:
 | `sign_message(msg)` | `(string) → string` | Sign UTF-8 string; return hex signature, or `""` if not initialised. |
 | `compute_next_hash(prev, ts, entropy, stack, salt)` | `(string, u64, string, string, string) → string` | Compute next Blake3 chain hash; all inputs/output hex or JSON strings. |
 | `run_program(b64)` | `(string) → JsValue` | Execute base64 VM program; return `{ stack: u32[], ip: number }`. |
+| `init_gene_state(gene_size)` | `(u32) → bool` | Initialise synthetic gene state in WASM memory. |
+| `preview_gene_commitment(order_b64)` | `(string) → string` | Apply mutation order on preview state and return commitment hex. |
+| `commit_gene_preview()` | `() → bool` | Commit previewed mutation state after accepted heartbeat. |
+| `discard_gene_preview()` | `() → void` | Discard previewed mutation state after rejection/error. |
+| `current_gene_commitment()` | `() → string` | Return current committed gene commitment hex. |
 
-All functions return empty strings on error rather than panicking.
-Callers must check for empty return values before using the result.
+String-returning functions return `""` on error rather than panicking. Callers
+must check for empty strings and boolean return values before use.

@@ -245,7 +245,7 @@ dependencies = [
 
 [[package]]
 name = "chronoseal-server"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "axum",
  "base64",
@@ -273,7 +273,7 @@ dependencies = [
 
 [[package]]
 name = "chronoseal-wasm"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "base64",
  "blake3",
@@ -1294,7 +1294,7 @@ dependencies = [
 
 [[package]]
 name = "shared"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "base64",
  "blake3",

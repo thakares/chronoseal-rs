@@ -75,6 +75,9 @@ async fn try_main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Command::Version) => {
             output::print(cli.globals.output_format(), &runtime::version())?;
         }
+        Some(Command::DbType) => {
+            output::print(cli.globals.output_format(), &runtime::db_type_report())?;
+        }
         Some(Command::Metrics(args)) => {
             let mut config = Config::load(cli.globals.config.as_deref())?;
             config.apply_runtime_args(args);

@@ -80,18 +80,51 @@ impl TextOutput for KeypairReport {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub struct DbTypeEntry {
+    pub name: &'static str,
+    pub implemented: bool,
+    pub notes: &'static str,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DbTypeReport {
+    pub default: &'static str,
+    pub backends: Vec<DbTypeEntry>,
+}
+
+impl TextOutput for DbTypeReport {
+    fn to_text(&self) -> String {
+        let mut out = format!("default={}\n", self.default);
+        for backend in &self.backends {
+            let status = if backend.implemented {
+                "implemented"
+            } else {
+                "todo"
+            };
+            out.push_str(&format!(
+                "db_type={} status={} notes={}\n",
+                backend.name, status, backend.notes
+            ));
+        }
+        out
+    }
+}
+
 impl TextOutput for Config {
     fn to_text(&self) -> String {
         format!(
-            "bind={}\npid_file={}\ndb_path={}\nfrontend_dir={}\nlog_file={}",
+            "bind={}\ndb_type={}\npid_file={}\ndb_path={}\nfrontend_dir={}\nlog_file={}\ngene_size={}",
             self.bind,
+            self.db_type.as_str(),
             self.pid_file.display(),
             self.db_path.display(),
             self.frontend_dir.display(),
             self.log_file
                 .as_ref()
                 .map(|path| path.display().to_string())
-                .unwrap_or_else(|| "none".to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            self.gene_size
         )
     }
 }
@@ -108,7 +141,7 @@ impl TextOutput for StoreStats {
 pub async fn run_daemon(config: Config) -> Result<(), Box<dyn std::error::Error>> {
     install_pid_file(&config.pid_file)?;
 
-    let db_pool = storage::init_pool(&config.db_path)?;
+    let db_pool = init_db_pool(&config)?;
     let state = Arc::new(session::AppState {
         db_pool,
         rate_limiter: Mutex::new(RateLimiter::new()),
@@ -145,6 +178,40 @@ pub async fn run_daemon(config: Config) -> Result<(), Box<dyn std::error::Error>
     result?;
     info!("chronoseal daemon stopped");
     Ok(())
+}
+
+pub fn db_type_report() -> DbTypeReport {
+    DbTypeReport {
+        default: crate::config::DbType::SqliteInMemory.as_str(),
+        backends: vec![
+            DbTypeEntry {
+                name: crate::config::DbType::SqliteInMemory.as_str(),
+                implemented: true,
+                notes: "default runtime backend",
+            },
+            DbTypeEntry {
+                name: crate::config::DbType::SqliteInDisk.as_str(),
+                implemented: true,
+                notes: "persistent SQLite backend (uses --db-path)",
+            },
+            DbTypeEntry {
+                name: crate::config::DbType::Valkey.as_str(),
+                implemented: true,
+                notes: "compatibility mode: falls back to sqlite-in-memory",
+            },
+        ],
+    }
+}
+
+fn init_db_pool(config: &Config) -> Result<storage::DbPool, Box<dyn std::error::Error>> {
+    match config.db_type {
+        crate::config::DbType::SqliteInMemory => storage::init_pool(Path::new(":memory:")),
+        crate::config::DbType::SqliteInDisk => storage::init_pool(&config.db_path),
+        crate::config::DbType::Valkey => {
+            warn!("db_type=valkey selected; using sqlite-in-memory compatibility mode in v0.6.0");
+            storage::init_pool(Path::new(":memory:"))
+        }
+    }
 }
 
 pub fn probe_health(config: &Config) -> HealthReport {
@@ -338,4 +405,76 @@ fn http_get(bind: &str, path: &str) -> Result<String, Box<dyn std::error::Error>
         .split_once("\r\n\r\n")
         .ok_or("daemon returned an invalid HTTP response")?;
     Ok(body.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn base_config() -> Config {
+        Config {
+            bind: "127.0.0.1:0".to_string(),
+            db_type: crate::config::DbType::SqliteInMemory,
+            pid_file: std::path::PathBuf::from("/tmp/chronoseal-test.pid"),
+            db_path: std::path::PathBuf::from("/tmp/chronoseal-test.sqlite"),
+            frontend_dir: std::path::PathBuf::from("."),
+            log_file: None,
+            heartbeat_min_interval_ms: 12_000,
+            heartbeat_max_interval_ms: 25_000,
+            expiration_minutes: 30,
+            rate_limit_count: 5,
+            rate_limit_window_secs: 10,
+            max_timestamp_drift_ms: 30_000,
+            min_mouse_total_dist: 1.0,
+            max_mouse_avg_speed: 5.0,
+            min_pause_count: 0,
+            require_mouse_activity: false,
+            gene_size: shared::constants::DEFAULT_GENE_SIZE,
+        }
+    }
+
+    #[test]
+    fn test_db_type_report_lists_backends() {
+        let report = db_type_report();
+        assert_eq!(report.default, "sqlite-in-memory");
+        assert_eq!(report.backends.len(), 3);
+        assert!(report.backends.iter().any(|b| b.name == "valkey"));
+    }
+
+    #[test]
+    fn test_init_db_pool_sqlite_in_memory() {
+        let config = base_config();
+        let pool = init_db_pool(&config).unwrap();
+        let conn = pool.get().unwrap();
+        let count: u64 = conn
+            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_init_db_pool_sqlite_in_disk() {
+        let mut config = base_config();
+        config.db_type = crate::config::DbType::SqliteInDisk;
+        config.db_path = std::path::PathBuf::from("/tmp/chronoseal-db-type-disk.sqlite");
+        let _ = std::fs::remove_file(&config.db_path);
+        let pool = init_db_pool(&config).unwrap();
+        let conn = pool.get().unwrap();
+        let count: u64 = conn
+            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_init_db_pool_valkey_compat_mode() {
+        let mut config = base_config();
+        config.db_type = crate::config::DbType::Valkey;
+        let pool = init_db_pool(&config).unwrap();
+        let conn = pool.get().unwrap();
+        let count: u64 = conn
+            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
 }

@@ -1,4 +1,8 @@
 use rand::Rng;
+use shared::{
+    gene::GeneState,
+    vm_extensions::{self, ExecutionTrace, MutationError, MutationOrder},
+};
 
 pub fn generate_random_program(len_range: std::ops::RangeInclusive<usize>) -> Vec<u8> {
     let mut rng = rand::thread_rng();
@@ -9,7 +13,7 @@ pub fn generate_random_program(len_range: std::ops::RangeInclusive<usize>) -> Ve
         if depth < 2 {
             // Not enough operands for any binary op — push a literal.
             ops.push(0x00);
-            let val = rng.gen::<u32>();
+            let val = rng.r#gen::<u32>();
             ops.extend_from_slice(&val.to_le_bytes());
             depth += 1;
         } else {
@@ -18,7 +22,7 @@ pub fn generate_random_program(len_range: std::ops::RangeInclusive<usize>) -> Ve
                 0x00 => {
                     // PUSH literal
                     ops.push(0x00);
-                    let val = rng.gen::<u32>();
+                    let val = rng.r#gen::<u32>();
                     ops.extend_from_slice(&val.to_le_bytes());
                     depth += 1;
                 }
@@ -43,4 +47,50 @@ pub fn generate_random_program(len_range: std::ops::RangeInclusive<usize>) -> Ve
     ops
 }
 
-// Server does not need to execute the program; client does.
+pub fn execute_mutation_program(
+    state: &mut GeneState,
+    program: &[u8],
+) -> Result<ExecutionTrace, MutationError> {
+    vm_extensions::execute_program(state, program)
+}
+
+pub fn execute_mutation_order(
+    state: &mut GeneState,
+    order: &MutationOrder,
+) -> Result<ExecutionTrace, MutationError> {
+    vm_extensions::execute_program(state, &order.program)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::SeedableRng;
+    use shared::gene::{commitment, new_state};
+
+    #[test]
+    fn test_execute_mutation_program_wraps_shared_engine() {
+        let mut state = new_state(8).unwrap();
+        let program = vec![vm_extensions::OP_MUTATE_POINT, 0, 0, 1];
+        let trace = execute_mutation_program(&mut state, &program).unwrap();
+        assert_eq!(state.gene[0], 1);
+        assert_eq!(trace.final_ip, program.len());
+    }
+
+    #[test]
+    fn test_execute_mutation_order_determinism() {
+        let mut rng_a = rand::rngs::StdRng::seed_from_u64(101);
+        let mut rng_b = rand::rngs::StdRng::seed_from_u64(101);
+        let order_a = vm_extensions::generate_order_with_rng(&mut rng_a, 9, 64);
+        let order_b = vm_extensions::generate_order_with_rng(&mut rng_b, 9, 64);
+        assert_eq!(order_a, order_b);
+
+        let mut state_a = new_state(64).unwrap();
+        let mut state_b = new_state(64).unwrap();
+        let trace_a = execute_mutation_order(&mut state_a, &order_a).unwrap();
+        let trace_b = execute_mutation_order(&mut state_b, &order_b).unwrap();
+
+        assert_eq!(state_a, state_b);
+        assert_eq!(trace_a.final_stack, trace_b.final_stack);
+        assert_eq!(commitment(&state_a), commitment(&state_b));
+    }
+}

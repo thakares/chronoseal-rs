@@ -38,9 +38,54 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
             chain_length INTEGER NOT NULL DEFAULT 1,
             created_at INTEGER NOT NULL,
             last_seen INTEGER NOT NULL,
-            expires_at INTEGER NOT NULL
+            expires_at INTEGER NOT NULL,
+            gene BLOB NOT NULL DEFAULT X'',
+            environment BLOB NOT NULL DEFAULT X'',
+            pending_mutation BLOB NOT NULL DEFAULT X'',
+            pending_mutation_step INTEGER NOT NULL DEFAULT 0
         );",
     )?;
+    ensure_column(
+        conn,
+        "gene",
+        "ALTER TABLE sessions ADD COLUMN gene BLOB NOT NULL DEFAULT X''",
+    )?;
+    ensure_column(
+        conn,
+        "environment",
+        "ALTER TABLE sessions ADD COLUMN environment BLOB NOT NULL DEFAULT X''",
+    )?;
+    ensure_column(
+        conn,
+        "pending_mutation",
+        "ALTER TABLE sessions ADD COLUMN pending_mutation BLOB NOT NULL DEFAULT X''",
+    )?;
+    ensure_column(
+        conn,
+        "pending_mutation_step",
+        "ALTER TABLE sessions ADD COLUMN pending_mutation_step INTEGER NOT NULL DEFAULT 0",
+    )?;
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);",
+    )?;
+    Ok(())
+}
+
+fn ensure_column(
+    conn: &rusqlite::Connection,
+    column: &str,
+    alter_sql: &str,
+) -> Result<(), rusqlite::Error> {
+    let exists: bool = conn.query_row(
+        "SELECT EXISTS(
+            SELECT 1 FROM pragma_table_info('sessions') WHERE name = ?1
+        )",
+        [column],
+        |row| row.get(0),
+    )?;
+    if !exists {
+        conn.execute_batch(alter_sql)?;
+    }
     Ok(())
 }
 

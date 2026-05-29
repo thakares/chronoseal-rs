@@ -1,5 +1,9 @@
 bind = "0.0.0.0:3000"
+# sqlite-in-memory (default), sqlite-in-disk, valkey (v0.6.0 compatibility mode)
+db_type = "sqlite-in-memory"
 pid_file = "/run/chronoseal.pid"
 db_path = "/var/lib/chronoseal/chronoseal.sqlite"
 frontend_dir = "/usr/share/chronoseal/frontend"
 log_file = "/var/log/chronoseal/chronoseal.jsonl"
+# synthetic gene size (1..=65536), default 512
+gene_size = 512
