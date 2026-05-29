@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/thakares/chronoseal-rs/blob/main/LICENSE.md">
+  <a href="https://github.com/thakares/chronoseal-rs/blob/main/LICENSE">
   <img src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg" alt="License: MIT OR Apache-2.0">
 </a>
   <a href="https://github.com/thakares/chronoseal-rs">
