@@ -72,7 +72,7 @@ See [docs/REFRACTORING-v0.6.0.md](docs/REFRACTORING-v0.6.0.md) for the full refa
 * Lightweight deployment footprint
 * Docker and native deployment support
 * Adaptive trust scoring
-* GPLv3 licensed
+* Apache/MIT licensed
 
 ---
 
