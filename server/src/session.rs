@@ -2,6 +2,14 @@ pub struct AppState {
     pub db_pool: crate::storage::DbPool,
     pub rate_limiter: tokio::sync::Mutex<crate::ratelimit::RateLimiter>,
     pub config: std::sync::RwLock<crate::config::Config>,
+    pub heartbeats_total: std::sync::atomic::AtomicU64,
+    pub verification_failures_total: std::sync::atomic::AtomicU64,
+    pub mutation_failures_total: std::sync::atomic::AtomicU64,
+    pub replay_attempts_total: std::sync::atomic::AtomicU64,
+    pub storage_latency_ns: std::sync::atomic::AtomicU64,
+    pub storage_ops_count: std::sync::atomic::AtomicU64,
+    pub http_latency_ns: std::sync::atomic::AtomicU64,
+    pub http_ops_count: std::sync::atomic::AtomicU64,
 }
 
 impl AppState {
@@ -68,6 +76,7 @@ pub fn create_session(
         environment: environment_blob,
         pending_mutation: initial_mutation.program,
         pending_mutation_step: initial_mutation.step,
+        opcodes,
     };
 
     db.insert_session(&record)
@@ -84,6 +93,7 @@ pub fn create_session(
         gene_size: config.gene_size as u32,
         mutation_step: initial_mutation.step,
         mutation_order_b64: initial_mutation_b64,
+        mutation_rounds: config.mutation_rounds,
     })
 }
 
@@ -150,6 +160,12 @@ pub fn verify_heartbeat(
     fingerprint::validate(&req.fingerprint)
         .map_err(|e| crate::errors::VerificationError::FingerprintFailed(e.to_string()))?;
 
+    // 5.5 Verify VM execution state
+    let expected_stack = shared::vm::execute(&session.opcodes);
+    if req.stack_state.stack != expected_stack.stack || req.stack_state.ip != expected_stack.ip {
+        return Err(crate::errors::VerificationError::VmStackMismatch);
+    }
+
     // 6. Compute new hash
     let new_hash = shared::hashing::next_chain_hash(
         &prev_hash_bytes,
@@ -182,9 +198,16 @@ pub fn verify_heartbeat(
         environment: next_environment_blob,
         pending_mutation: next_mutation.program,
         pending_mutation_step: next_step,
+        opcodes: session.opcodes,
     };
-    db.update_session(&update_record)
-        .map_err(|e| crate::errors::VerificationError::Storage(e.to_string()))?;
+    db.update_session(&update_record, &session.last_hash)
+        .map_err(|e| {
+            if e.to_string().contains("Concurrent update detected") {
+                crate::errors::VerificationError::ConcurrentUpdate
+            } else {
+                crate::errors::VerificationError::Storage(e.to_string())
+            }
+        })?;
 
     Ok(HeartbeatVerificationResult {
         next_salt_hex,
@@ -210,6 +233,7 @@ mod tests {
         pending_mutation_step: u64,
         pending_mutation_order_b64: String,
         committed_gene_state: GeneState,
+        opcodes_b64: String,
     }
 
     fn test_config() -> crate::config::Config {
@@ -247,12 +271,6 @@ mod tests {
         }
     }
 
-    fn test_stack() -> StackState {
-        StackState {
-            stack: vec![42, 7, 99],
-            ip: 3,
-        }
-    }
 
     fn test_fingerprint() -> Fingerprint {
         Fingerprint {
@@ -288,6 +306,7 @@ mod tests {
             pending_mutation_step: init.mutation_step,
             pending_mutation_order_b64: init.mutation_order_b64.clone(),
             committed_gene_state: gene::new_state(init.gene_size as usize).unwrap(),
+            opcodes_b64: init.opcodes_b64.clone(),
         }
     }
 
@@ -304,7 +323,9 @@ mod tests {
             vm_extensions::apply_program_clone(&client.committed_gene_state, &order.program)
                 .unwrap();
         let entropy = test_entropy();
-        let stack = test_stack();
+        
+        let program_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &client.opcodes_b64).unwrap();
+        let stack = shared::vm::execute(&program_bytes);
 
         let mut req = HeartbeatRequest {
             session_id: client.session_id.clone(),

@@ -55,6 +55,10 @@ impl std::fmt::Display for GeneError {
 
 impl std::error::Error for GeneError {}
 
+/// Creates a new, blank `GeneState` with the specified gene buffer size.
+///
+/// # Arguments
+/// * `gene_size` - The length of the gene byte buffer. Must be within `1..=MAX_GENE_SIZE`.
 pub fn new_state(gene_size: usize) -> Result<GeneState, GeneError> {
     if !(1..=MAX_GENE_SIZE).contains(&gene_size) {
         return Err(GeneError::InvalidGeneSize { size: gene_size });
@@ -65,6 +69,7 @@ pub fn new_state(gene_size: usize) -> Result<GeneState, GeneError> {
     })
 }
 
+/// Creates a new `GeneState` with the default gene buffer size (`DEFAULT_GENE_SIZE`).
 pub fn default_state() -> GeneState {
     GeneState {
         gene: vec![0; DEFAULT_GENE_SIZE],
@@ -72,6 +77,10 @@ pub fn default_state() -> GeneState {
     }
 }
 
+/// Validates the structural invariants of the given `GeneState`.
+///
+/// Ensures the gene size is within valid bounds and the environment records are
+/// properly sorted, non-empty, and free of duplicates.
 pub fn validate_state(state: &GeneState) -> Result<(), GeneError> {
     if !(1..=MAX_GENE_SIZE).contains(&state.gene.len()) {
         return Err(GeneError::InvalidGeneSize {
@@ -81,6 +90,13 @@ pub fn validate_state(state: &GeneState) -> Result<(), GeneError> {
     validate_environment(&state.environment)
 }
 
+/// Retrieves the quantity associated with a specific environment symbol.
+///
+/// Performs a binary search over the sorted environment records. Returns 0 if the symbol is missing.
+///
+/// # Arguments
+/// * `state` - The gene state to query.
+/// * `symbol` - The 16-bit key to search for.
 pub fn get_env_quantity(state: &GeneState, symbol: u16) -> u32 {
     match state
         .environment
@@ -91,6 +107,14 @@ pub fn get_env_quantity(state: &GeneState, symbol: u16) -> u32 {
     }
 }
 
+/// Sets the quantity of an environment symbol in a `GeneState`.
+///
+/// If quantity is 0, the record is removed. The environment is kept sorted alphabetically by symbol.
+///
+/// # Arguments
+/// * `state` - The mutable gene state to update.
+/// * `symbol` - The 16-bit key.
+/// * `quantity` - The quantity to assign.
 pub fn set_env_quantity(
     state: &mut GeneState,
     symbol: u16,
@@ -125,6 +149,12 @@ pub fn set_env_quantity(
     }
 }
 
+/// Adds a quantity to an environment symbol with saturating arithmetic.
+///
+/// # Arguments
+/// * `state` - The mutable gene state.
+/// * `symbol` - The 16-bit key.
+/// * `quantity` - The quantity to add.
 pub fn add_env_quantity(
     state: &mut GeneState,
     symbol: u16,
@@ -136,6 +166,14 @@ pub fn add_env_quantity(
     Ok(next)
 }
 
+/// Subtracts a quantity from an environment symbol with saturating arithmetic.
+///
+/// If the resulting quantity drops to 0, the symbol is removed.
+///
+/// # Arguments
+/// * `state` - The mutable gene state.
+/// * `symbol` - The 16-bit key.
+/// * `quantity` - The quantity to subtract.
 pub fn sub_env_quantity(
     state: &mut GeneState,
     symbol: u16,
@@ -147,6 +185,12 @@ pub fn sub_env_quantity(
     Ok(next)
 }
 
+/// Encodes the environment records list into a compact byte slice.
+///
+/// Each record is written as a little-endian `u16` symbol followed by a little-endian `u32` quantity.
+///
+/// # Arguments
+/// * `records` - The sorted environment records.
 pub fn encode_environment(records: &[EnvironmentRecord]) -> Result<Vec<u8>, GeneError> {
     validate_environment(records)?;
     let mut out = Vec::with_capacity(records.len() * 6);
@@ -157,6 +201,12 @@ pub fn encode_environment(records: &[EnvironmentRecord]) -> Result<Vec<u8>, Gene
     Ok(out)
 }
 
+/// Decodes environment records from a byte slice.
+///
+/// Validates that the length is a multiple of 6 and that records conform to sorting and quantity invariants.
+///
+/// # Arguments
+/// * `blob` - The serialized byte slice.
 pub fn decode_environment(blob: &[u8]) -> Result<Vec<EnvironmentRecord>, GeneError> {
     if !blob.len().is_multiple_of(6) {
         return Err(GeneError::EnvironmentBlobLengthInvalid { len: blob.len() });
@@ -180,6 +230,9 @@ pub fn decode_environment(blob: &[u8]) -> Result<Vec<EnvironmentRecord>, GeneErr
     Ok(records)
 }
 
+/// Computes the raw Blake3 cryptographic commitment of the `GeneState`.
+///
+/// Includes gene length, gene buffer, environment record count, and individual record key/values.
 pub fn commitment(state: &GeneState) -> [u8; 32] {
     let mut h = blake3::Hasher::new();
     h.update(b"chronoseal/gene/v1");
@@ -193,10 +246,19 @@ pub fn commitment(state: &GeneState) -> [u8; 32] {
     *h.finalize().as_bytes()
 }
 
+/// Computes the hex-encoded cryptographic commitment of the `GeneState`.
 pub fn commitment_hex(state: &GeneState) -> String {
     hex::encode(commitment(state))
 }
 
+/// Computes a context-bound Blake3 cryptographic commitment of the `GeneState`.
+///
+/// Integrates `session_id` and the current `step` index into the hash to bind the commitment.
+///
+/// # Arguments
+/// * `state` - The gene state.
+/// * `session_id` - The client session ID.
+/// * `step` - The mutation step index.
 pub fn commitment_with_context(state: &GeneState, session_id: &str, step: u64) -> [u8; 32] {
     let mut h = blake3::Hasher::new();
     h.update(b"chronoseal/gene/v1");
@@ -206,10 +268,17 @@ pub fn commitment_with_context(state: &GeneState, session_id: &str, step: u64) -
     *h.finalize().as_bytes()
 }
 
+/// Computes a context-bound, hex-encoded Blake3 cryptographic commitment of the `GeneState`.
+///
+/// # Arguments
+/// * `state` - The gene state.
+/// * `session_id` - The client session ID.
+/// * `step` - The mutation step index.
 pub fn commitment_hex_with_context(state: &GeneState, session_id: &str, step: u64) -> String {
     hex::encode(commitment_with_context(state, session_id, step))
 }
 
+/// Helper function to validate sorting, uniqueness, and non-zero properties of environment records.
 fn validate_environment(records: &[EnvironmentRecord]) -> Result<(), GeneError> {
     if records.len() > MAX_ENV_RECORDS {
         return Err(GeneError::TooManyEnvironmentRecords { len: records.len() });

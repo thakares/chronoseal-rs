@@ -16,6 +16,7 @@ let minInterval = 12000;
 let maxInterval = 25000;
 let pendingMutationStep = 0;
 let pendingMutationOrderB64 = '';
+let mutationRounds = 4;
 
 export async function initHeartbeat() {
     await init();
@@ -32,6 +33,7 @@ export async function initHeartbeat() {
     }
     pendingMutationStep = initResp.mutation_step;
     pendingMutationOrderB64 = initResp.mutation_order_b64;
+    mutationRounds = initResp.mutation_rounds || 4;
     lastTime = performance.now();
     scheduleNext();
 }
@@ -56,7 +58,7 @@ async function sendHeartbeat() {
         const timestamp = Date.now();
         const entropyData = { events: events.map(e => ({ x: e.x, y: e.y, t: e.t })) };
         const entropyJson = JSON.stringify(entropyData);
-        const geneCommitment = preview_gene_commitment(pendingMutationOrderB64);
+        const geneCommitment = preview_gene_commitment(pendingMutationOrderB64, session, pendingMutationStep, mutationRounds);
         if (!geneCommitment) {
             throw new Error('Unable to compute mutation commitment');
         }

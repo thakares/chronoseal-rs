@@ -1,6 +1,14 @@
 use crate::config::Config;
 use shared::protocol::EntropyData;
 
+/// Validates the browser mouse cursor interaction path for bot/automation detection.
+///
+/// Evaluates mouse velocity and distance features, checks the total distance traversed,
+/// checks for cursor pauses (low movement over high time diff), and enforces average cursor speeds.
+///
+/// # Arguments
+/// * `data` - The client-supplied interaction entropy events.
+/// * `config` - The server configuration boundaries.
 pub fn validate_mouse(
     data: &EntropyData,
     config: &Config,
@@ -40,6 +48,7 @@ pub fn validate_mouse(
     }
     Ok(())
 }
+
 
 #[cfg(test)]
 mod tests {

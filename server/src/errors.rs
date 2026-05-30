@@ -86,4 +86,10 @@ pub enum VerificationError {
 
     #[error("Gene state error: {0}")]
     GeneState(String),
+
+    #[error("VM execution stack state mismatch")]
+    VmStackMismatch,
+
+    #[error("Concurrent state modification detected (CAS failed)")]
+    ConcurrentUpdate,
 }

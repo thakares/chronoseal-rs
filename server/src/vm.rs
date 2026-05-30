@@ -4,6 +4,13 @@ use shared::{
     vm_extensions::{self, ExecutionTrace, MutationError, MutationOrder},
 };
 
+/// Generates a randomized VM opcode instruction program within a length range.
+///
+/// Builds a program of mathematical and stack ops (e.g. literals, ADD, SUB, XOR, HASH)
+/// with dynamic depth checking to ensure valid stacks and prevent out of bounds execution.
+///
+/// # Arguments
+/// * `len_range` - The inclusive range of instruction counts to generate.
 pub fn generate_random_program(len_range: std::ops::RangeInclusive<usize>) -> Vec<u8> {
     let mut rng = rand::thread_rng();
     let count = rng.gen_range(len_range);
@@ -47,6 +54,11 @@ pub fn generate_random_program(len_range: std::ops::RangeInclusive<usize>) -> Ve
     ops
 }
 
+/// Executes a raw VM mutation program bytecode slice against a `GeneState`.
+///
+/// # Arguments
+/// * `state` - The mutable gene state to mutate.
+/// * `program` - The raw VM instruction program.
 #[allow(dead_code)]
 pub fn execute_mutation_program(
     state: &mut GeneState,
@@ -55,6 +67,11 @@ pub fn execute_mutation_program(
     vm_extensions::execute_program(state, program)
 }
 
+/// Executes a `MutationOrder` program against a `GeneState`.
+///
+/// # Arguments
+/// * `state` - The mutable gene state.
+/// * `order` - The mutation order.
 #[allow(dead_code)]
 pub fn execute_mutation_order(
     state: &mut GeneState,
@@ -62,6 +79,7 @@ pub fn execute_mutation_order(
 ) -> Result<ExecutionTrace, MutationError> {
     vm_extensions::execute_program(state, &order.program)
 }
+
 
 #[cfg(test)]
 mod tests {

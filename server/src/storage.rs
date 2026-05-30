@@ -1,9 +1,8 @@
 use crate::config::Config;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use valkey::Client as ValkeyClient;
+use redis::Commands;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoreStats {
@@ -20,7 +19,7 @@ pub enum DbPool {
 
 #[derive(Debug, Clone)]
 pub struct ValkeyStore {
-    client: Arc<Mutex<ValkeyClient>>,
+    pool: r2d2::Pool<redis::Client>,
     index_key: String,
 }
 
@@ -38,6 +37,7 @@ pub struct SessionRecord {
     pub environment: Vec<u8>,
     pub pending_mutation: Vec<u8>,
     pub pending_mutation_step: u64,
+    pub opcodes: Vec<u8>,
 }
 
 impl DbPool {
@@ -54,19 +54,17 @@ impl DbPool {
             crate::config::DbType::Valkey => {
                 let addr = std::env::var("CHRONOSEAL_VALKEY_ADDR")
                     .unwrap_or_else(|_| "127.0.0.1:6666".to_string());
-                match ValkeyClient::connect(addr) {
-                    Ok(client) => Ok(DbPool::Valkey(ValkeyStore {
-                        client: Arc::new(Mutex::new(client)),
-                        index_key: "sessions:ids".to_string(),
-                    })),
-                    Err(err) => {
-                        tracing::warn!(
-                            "valkey connection failed, falling back to sqlite-in-memory: {err}"
-                        );
-                        let pool = init_sqlite_pool(Path::new(":memory:"))?;
-                        Ok(DbPool::Sqlite(pool))
-                    }
-                }
+                let connection_string = if addr.starts_with("redis://") || addr.starts_with("rediss://") {
+                    addr.clone()
+                } else {
+                    format!("redis://{}", addr)
+                };
+                let client = redis::Client::open(connection_string)?;
+                let pool = r2d2::Pool::builder().build(client)?;
+                Ok(DbPool::Valkey(ValkeyStore {
+                    pool,
+                    index_key: "sessions:ids".to_string(),
+                }))
             }
         }
     }
@@ -79,8 +77,8 @@ impl DbPool {
                     "INSERT INTO sessions (
                         session_id, public_key, salt, last_hash, chain_length,
                         created_at, last_seen, expires_at, gene, environment,
-                        pending_mutation, pending_mutation_step
-                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                        pending_mutation, pending_mutation_step, opcodes
+                    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                 )?;
                 stmt.execute(rusqlite::params![
                     record.session_id,
@@ -95,6 +93,7 @@ impl DbPool {
                     &record.environment,
                     &record.pending_mutation,
                     record.pending_mutation_step,
+                    &record.opcodes,
                 ])?;
                 Ok(())
             }
@@ -110,7 +109,7 @@ impl DbPool {
             DbPool::Sqlite(pool) => {
                 let conn = pool.get()?;
                 let mut stmt = conn.prepare(
-                    "SELECT session_id, public_key, salt, last_hash, chain_length, created_at, last_seen, expires_at, gene, environment, pending_mutation, pending_mutation_step
+                    "SELECT session_id, public_key, salt, last_hash, chain_length, created_at, last_seen, expires_at, gene, environment, pending_mutation, pending_mutation_step, opcodes
                      FROM sessions WHERE session_id = ?1",
                 )?;
                 let row = stmt.query_row([session_id], |row| {
@@ -127,6 +126,7 @@ impl DbPool {
                         environment: row.get(9)?,
                         pending_mutation: row.get(10)?,
                         pending_mutation_step: row.get(11)?,
+                        opcodes: row.get(12)?,
                     })
                 });
                 match row {
@@ -139,11 +139,15 @@ impl DbPool {
         }
     }
 
-    pub fn update_session(&self, record: &SessionRecord) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn update_session(
+        &self,
+        record: &SessionRecord,
+        old_last_hash: &[u8],
+    ) -> Result<(), Box<dyn std::error::Error>> {
         match self {
             DbPool::Sqlite(pool) => {
                 let conn = pool.get()?;
-                conn.execute(
+                let rows = conn.execute(
                     "UPDATE sessions SET
                         public_key=?1,
                         salt=?2,
@@ -155,8 +159,9 @@ impl DbPool {
                         gene=?8,
                         environment=?9,
                         pending_mutation=?10,
-                        pending_mutation_step=?11
-                     WHERE session_id=?12",
+                        pending_mutation_step=?11,
+                        opcodes=?12
+                     WHERE session_id=?13 AND last_hash=?14",
                     rusqlite::params![
                         &record.public_key,
                         &record.salt,
@@ -169,12 +174,20 @@ impl DbPool {
                         &record.environment,
                         &record.pending_mutation,
                         record.pending_mutation_step,
+                        &record.opcodes,
                         &record.session_id,
+                        old_last_hash,
                     ],
                 )?;
+                if rows == 0 {
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        "Concurrent update detected (CAS failed)",
+                    )));
+                }
                 Ok(())
             }
-            DbPool::Valkey(store) => store.insert_session(record),
+            DbPool::Valkey(store) => store.update_session_cas(record, old_last_hash),
         }
     }
 
@@ -237,6 +250,10 @@ fn init_sqlite_pool(
         }
         r2d2_sqlite::SqliteConnectionManager::file(path)
     };
+    let manager = manager.with_init(|conn| {
+        conn.busy_timeout(std::time::Duration::from_millis(5000))?;
+        Ok(())
+    });
     let pool = r2d2::Pool::new(manager)?;
     let conn = pool.get()?;
     init_schema(&conn)?;
@@ -257,7 +274,8 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
             gene BLOB NOT NULL DEFAULT X'',
             environment BLOB NOT NULL DEFAULT X'',
             pending_mutation BLOB NOT NULL DEFAULT X'',
-            pending_mutation_step INTEGER NOT NULL DEFAULT 0
+            pending_mutation_step INTEGER NOT NULL DEFAULT 0,
+            opcodes BLOB NOT NULL DEFAULT X''
         );",
     )?;
     ensure_column(
@@ -279,6 +297,11 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<(), rusqlite::Error> {
         conn,
         "pending_mutation_step",
         "ALTER TABLE sessions ADD COLUMN pending_mutation_step INTEGER NOT NULL DEFAULT 0",
+    )?;
+    ensure_column(
+        conn,
+        "opcodes",
+        "ALTER TABLE sessions ADD COLUMN opcodes BLOB NOT NULL DEFAULT X''",
     )?;
     conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);",
@@ -313,67 +336,108 @@ impl ValkeyStore {
         &self,
         session_id: &str,
     ) -> Result<Option<SessionRecord>, Box<dyn std::error::Error>> {
-        let mut client = self.client.lock().unwrap();
-        if let Some(payload) = client.get(&self.session_key(session_id))? {
-            let record = serde_json::from_str(&payload)?;
-            Ok(Some(record))
-        } else {
-            Ok(None)
+        let mut conn = self.pool.get()?;
+        let key = self.session_key(session_id);
+        let payload: Option<String> = conn.get(&key)?;
+        match payload {
+            Some(p) => Ok(serde_json::from_str(&p)?),
+            None => Ok(None),
         }
     }
 
     fn insert_session(&self, record: &SessionRecord) -> Result<(), Box<dyn std::error::Error>> {
-        let mut client = self.client.lock().unwrap();
+        let mut conn = self.pool.get()?;
+        let key = self.session_key(&record.session_id);
         let value = serde_json::to_string(record)?;
-        client.set(&self.session_key(&record.session_id), &value)?;
-        let existing = client.get(&self.index_key)?;
-        let mut ids = existing.unwrap_or_default();
-        if !ids.split('\n').any(|id| id == record.session_id) {
-            if !ids.is_empty() {
-                ids.push('\n');
-            }
-            ids.push_str(&record.session_id);
-            client.set(&self.index_key, &ids)?;
-        }
+        let now = current_time_ms();
+        let ttl_seconds = (record.expires_at.saturating_sub(now) / 1000).max(1);
+
+        redis::pipe()
+            .atomic()
+            .cmd("SET").arg(&key).arg(&value).arg("EX").arg(ttl_seconds)
+            .cmd("ZADD").arg(&self.index_key).arg(record.expires_at).arg(&record.session_id)
+            .cmd("ZADD").arg("sessions:chain_lengths").arg(record.chain_length).arg(&record.session_id)
+            .query::<()>(&mut *conn)?;
         Ok(())
     }
 
-    fn purge_expired_sessions(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut client = self.client.lock().unwrap();
-        let ids = client.get(&self.index_key)?.unwrap_or_default();
-        let now = current_time_ms();
-        let mut remaining: Vec<String> = Vec::new();
-        for id in ids.split('\n').filter(|id| !id.is_empty()) {
-            if let Some(payload) = client.get(&self.session_key(id))? {
-                if let Ok(record) = serde_json::from_str::<SessionRecord>(&payload) {
-                    if record.expires_at > now {
-                        remaining.push(id.to_string());
-                    }
+    fn update_session_cas(
+        &self,
+        record: &SessionRecord,
+        old_last_hash: &[u8],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut conn = self.pool.get()?;
+        let key = self.session_key(&record.session_id);
+
+        // Watch key for concurrent modification
+        redis::cmd("WATCH").arg(&key).query::<()>(&mut *conn)?;
+
+        // Fetch current and verify last_hash matches
+        let payload: Option<String> = conn.get(&key)?;
+        match payload {
+            Some(p) => {
+                let current_record: SessionRecord = serde_json::from_str(&p)?;
+                if current_record.last_hash != old_last_hash {
+                    redis::cmd("UNWATCH").query::<()>(&mut *conn)?;
+                    return Err(Box::new(std::io::Error::new(
+                        std::io::ErrorKind::AlreadyExists,
+                        "Concurrent update detected (CAS failed in Valkey)",
+                    )));
                 }
             }
+            None => {
+                redis::cmd("UNWATCH").query::<()>(&mut *conn)?;
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "Session not found for update in Valkey",
+                )));
+            }
         }
-        client.set(&self.index_key, &remaining.join("\n"))?;
+
+        let value = serde_json::to_string(record)?;
+        let now = current_time_ms();
+        let ttl_seconds = (record.expires_at.saturating_sub(now) / 1000).max(1);
+
+        let response: Option<()> = redis::pipe()
+            .atomic()
+            .cmd("SET").arg(&key).arg(&value).arg("EX").arg(ttl_seconds)
+            .cmd("ZADD").arg(&self.index_key).arg(record.expires_at).arg(&record.session_id)
+            .cmd("ZADD").arg("sessions:chain_lengths").arg(record.chain_length).arg(&record.session_id)
+            .query(&mut *conn)?;
+
+        match response {
+            Some(_) => Ok(()),
+            None => Err(Box::new(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "Transaction aborted due to concurrent modification",
+            ))),
+        }
+    }
+
+    fn purge_expired_sessions(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let now = current_time_ms();
+        let mut conn = self.pool.get()?;
+        // Fetch expired session IDs
+        let expired_ids: Vec<String> = conn.zrangebyscore(&self.index_key, 0, now)?;
+        if !expired_ids.is_empty() {
+            redis::pipe()
+                .atomic()
+                .cmd("ZREM").arg(&self.index_key).arg(&expired_ids)
+                .cmd("ZREM").arg("sessions:chain_lengths").arg(&expired_ids)
+                .query::<()>(&mut *conn)?;
+        }
         Ok(())
     }
 
     fn stats(&self) -> Result<StoreStats, Box<dyn std::error::Error>> {
-        let mut client = self.client.lock().unwrap();
-        let ids = client.get(&self.index_key)?.unwrap_or_default();
         let now = current_time_ms();
-        let mut sessions = 0;
-        let mut expired_sessions = 0;
-        let mut max_chain_length = 0;
-        for id in ids.split('\n').filter(|id| !id.is_empty()) {
-            if let Some(payload) = client.get(&self.session_key(id))? {
-                if let Ok(record) = serde_json::from_str::<SessionRecord>(&payload) {
-                    sessions += 1;
-                    if record.expires_at < now {
-                        expired_sessions += 1;
-                    }
-                    max_chain_length = max_chain_length.max(record.chain_length);
-                }
-            }
-        }
+        let mut conn = self.pool.get()?;
+        let sessions: u64 = conn.zcard(&self.index_key)?;
+        let expired_sessions: u64 = conn.zcount(&self.index_key, 0, now)?;
+
+        let max_chain_length_res: Vec<(String, u64)> = conn.zrevrange_withscores("sessions:chain_lengths", 0, 0)?;
+        let max_chain_length = max_chain_length_res.first().map(|(_, score)| *score).unwrap_or(0);
+
         Ok(StoreStats {
             sessions,
             expired_sessions,
@@ -388,3 +452,208 @@ pub fn current_time_ms() -> u64 {
         .unwrap()
         .as_millis() as u64
 }
+
+#[cfg(test)]
+mod valkey_tests {
+    use super::*;
+
+    #[test]
+    fn test_valkey_store_operations() {
+        let addr = std::env::var("CHRONOSEAL_VALKEY_ADDR").unwrap_or_else(|_| "127.0.0.1:6379".to_string());
+        let connection_string = format!("redis://{}", addr);
+        let client = match redis::Client::open(connection_string) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let pool = match r2d2::Pool::builder().build(client) {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let mut conn = match pool.get() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let _: () = match redis::cmd("PING").query(&mut *conn) {
+            Ok(res) => res,
+            Err(_) => return,
+        };
+
+        let store = ValkeyStore {
+            pool,
+            index_key: "test:sessions:ids".to_string(),
+        };
+
+        let _: Result<(), _> = conn.del("test:sessions:ids");
+
+        let session_id = "test_session_123".to_string();
+        let record = SessionRecord {
+            session_id: session_id.clone(),
+            public_key: vec![1, 2, 3],
+            salt: vec![4, 5, 6],
+            last_hash: vec![7, 8, 9],
+            chain_length: 10,
+            created_at: 1000,
+            last_seen: 2000,
+            expires_at: current_time_ms() + 10000,
+            gene: vec![11],
+            environment: vec![12],
+            pending_mutation: vec![13],
+            pending_mutation_step: 14,
+            opcodes: vec![],
+        };
+
+        store.insert_session(&record).unwrap();
+
+        let loaded = store.load_session(&session_id).unwrap().unwrap();
+        assert_eq!(loaded.session_id, session_id);
+        assert_eq!(loaded.chain_length, 10);
+
+        let stats = store.stats().unwrap();
+        assert_eq!(stats.sessions, 1);
+        assert_eq!(stats.max_chain_length, 10);
+
+        store.purge_expired_sessions().unwrap();
+        let stats = store.stats().unwrap();
+        assert_eq!(stats.sessions, 1);
+
+        let _: Result<(), _> = conn.del(store.session_key(&session_id));
+        let _: Result<(), _> = conn.del(&store.index_key);
+    }
+
+    #[test]
+    fn test_valkey_pool_concurrency() {
+        use std::thread;
+        use std::sync::Arc;
+
+        let addr = std::env::var("CHRONOSEAL_VALKEY_ADDR").unwrap_or_else(|_| "127.0.0.1:6379".to_string());
+        let connection_string = format!("redis://{}", addr);
+        let client = match redis::Client::open(connection_string) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let pool = match r2d2::Pool::builder().build(client) {
+            Ok(p) => p,
+            Err(_) => return,
+        };
+        let mut conn = match pool.get() {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        let _: () = match redis::cmd("PING").query(&mut *conn) {
+            Ok(res) => res,
+            Err(_) => return,
+        };
+
+        let store = ValkeyStore {
+            pool,
+            index_key: "test:concurrent:sessions:ids".to_string(),
+        };
+        let _: Result<(), _> = conn.del("test:concurrent:sessions:ids");
+
+        let store_arc = Arc::new(store);
+        let mut handles = Vec::new();
+
+        for t in 0..10 {
+            let store_clone = store_arc.clone();
+            let session_id = format!("valkey_concurrent_{}", t);
+            let handle = thread::spawn(move || {
+                let record = SessionRecord {
+                    session_id: session_id.clone(),
+                    public_key: vec![1, 2, 3],
+                    salt: vec![4, 5, 6],
+                    last_hash: vec![7, 8, 9],
+                    chain_length: 1,
+                    created_at: 1000,
+                    last_seen: 2000,
+                    expires_at: current_time_ms() + 10000,
+                    gene: vec![11],
+                    environment: vec![12],
+                    pending_mutation: vec![13],
+                    pending_mutation_step: 14,
+                    opcodes: vec![],
+                };
+                store_clone.insert_session(&record).unwrap();
+                let loaded = store_clone.load_session(&session_id).unwrap().unwrap();
+                assert_eq!(loaded.session_id, session_id);
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let stats = store_arc.stats().unwrap();
+        assert_eq!(stats.sessions, 10);
+
+        // Cleanup
+        let mut conn = store_arc.pool.get().unwrap();
+        for t in 0..10 {
+            let _: Result<(), _> = conn.del(store_arc.session_key(&format!("valkey_concurrent_{}", t)));
+        }
+        let _: Result<(), _> = conn.del(&store_arc.index_key);
+    }
+}
+
+#[cfg(test)]
+mod sqlite_tests {
+    use super::*;
+    use std::thread;
+    use std::sync::Arc;
+
+    #[test]
+    fn test_sqlite_pool_concurrency() {
+        let db_path = Path::new("target/test_sqlite_concurrency.db");
+        if let Some(parent) = db_path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::remove_file(db_path);
+
+        let pool = init_pool(db_path).unwrap();
+        let pool_arc = Arc::new(pool);
+        let mut handles = Vec::new();
+
+        for t in 0..10 {
+            let pool_clone = pool_arc.clone();
+            let handle = thread::spawn(move || {
+                let session_id = format!("concurrent_session_{}", t);
+                let record = SessionRecord {
+                    session_id: session_id.clone(),
+                    public_key: vec![1, 2, 3],
+                    salt: vec![4, 5, 6],
+                    last_hash: vec![7, 8, 9],
+                    chain_length: 1,
+                    created_at: 1000,
+                    last_seen: 2000,
+                    expires_at: current_time_ms() + 10000,
+                    gene: vec![11],
+                    environment: vec![12],
+                    pending_mutation: vec![13],
+                    pending_mutation_step: 14,
+                    opcodes: vec![],
+                };
+                pool_clone.insert_session(&record).unwrap();
+                let loaded = pool_clone.load_session(&session_id).unwrap().unwrap();
+                assert_eq!(loaded.session_id, session_id);
+
+                let mut updated = loaded;
+                updated.chain_length = 2;
+                let old_hash = updated.last_hash.clone();
+                pool_clone.update_session(&updated, &old_hash).unwrap();
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let stats = pool_arc.stats().unwrap();
+        assert_eq!(stats.sessions, 10);
+
+        std::mem::drop(pool_arc);
+        let _ = std::fs::remove_file(db_path);
+    }
+}
+
+

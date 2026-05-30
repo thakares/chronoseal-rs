@@ -536,7 +536,32 @@ Set storage mode with `db_type` or `CHRONOSEAL_DB_TYPE`.
 | `sqlite-in-disk` | SQLite database persisted at `db_path`. |
 | `valkey` | Valkey-compatible backend mode. |
 
-For Valkey mode, the server reads `CHRONOSEAL_VALKEY_ADDR` and defaults to `127.0.0.1:6666` when it is not set. If the Valkey connection fails, the current implementation falls back to in-memory SQLite and logs a warning.
+For Valkey mode, the server reads `CHRONOSEAL_VALKEY_ADDR` (defaulting to `127.0.0.1:6666`) and establishes a thread-safe connection pool using `r2d2` and the `redis` client crate. It leverages native Valkey sets for session ID indexing and native key expiration for automatic session cleanup. If the Valkey connection fails, the server falls back to in-memory SQLite and logs a warning.
+
+### Valkey / Redis Server Setup
+
+To quickly run a local Valkey/Redis instance for testing or production:
+
+```bash
+# Option A: Start a local Valkey/Redis server on port 6666
+valkey-server --port 6666 --bind 127.0.0.1
+# Or
+redis-server --port 6666 --bind 127.0.0.1
+
+# Option B: Spin up via Docker
+docker run -d --name chronoseal-valkey -p 6666:6379 valkey/valkey:latest
+```
+
+Configure ChronoSeal to use it:
+```bash
+export CHRONOSEAL_DB_TYPE=valkey
+export CHRONOSEAL_VALKEY_ADDR=127.0.0.1:6666
+```
+
+If your Valkey or Redis server requires credentials or secure TLS:
+* **Password Only**: `redis://:your_password@127.0.0.1:6666`
+* **Username & Password**: `redis://your_username:your_password@127.0.0.1:6666`
+* **Secure Connection (SSL/TLS)**: `rediss://your_username:your_password@secure-host.example.com:6379`
 
 ## Operations
 

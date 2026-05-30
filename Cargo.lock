@@ -275,7 +275,7 @@ dependencies = [
 
 [[package]]
 name = "chronoseal-replay"
-version = "0.1.0"
+version = "1.0.1"
 dependencies = [
  "anyhow",
  "base64",
@@ -290,7 +290,7 @@ dependencies = [
 
 [[package]]
 name = "chronoseal-server"
-version = "0.6.0"
+version = "1.0.1"
 dependencies = [
  "axum",
  "base64",
@@ -319,7 +319,7 @@ dependencies = [
 
 [[package]]
 name = "chronoseal-wasm"
-version = "0.6.0"
+version = "1.0.1"
 dependencies = [
  "base64",
  "blake3",
@@ -1946,7 +1946,7 @@ dependencies = [
 
 [[package]]
 name = "shared"
-version = "0.6.0"
+version = "1.0.1"
 dependencies = [
  "base64",
  "blake3",

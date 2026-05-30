@@ -106,6 +106,23 @@ Expected result:
 - ChronoSeal does not claim complete prevention
 - additional application-level controls are required
 
+## Attacker Classification Boundaries
+
+### Protected
+*   **Commodity Scrapers:** Simple HTTP clients (`curl`, Python `requests`, Go HTTP clients) that cannot execute JavaScript or WebAssembly.
+*   **Simple Replay Attackers:** Intercepted heartbeat payloads cannot be reused because of the strict hash-chain sequencing and salt rotation.
+*   **Signature Forgers:** Heartbeats without the session's private key will fail Ed25519 verification.
+
+### Partially Protected
+*   **Headless Automation (Puppeteer, Playwright):** Attackers must load the WASM runtime, execute the VM instructions, calculate gene mutations, and simulate realistic human mouse interactions. This significantly increases CPU and system memory overhead, reducing the scale of bot operations.
+*   **Stealth Automation Frameworks:** Advanced frameworks must maintain state sync across multiple heartbeat cycles, exposing them to timing detection.
+
+### Unprotected
+*   **WASM Key Extraction:** A reverse engineer with full browser process control can extract the private key from WASM memory.
+*   **Malware Operators:** Keyloggers, screen scrapers, or memory dumpers operating at the OS level are outside the application trust boundary.
+*   **MITM Interceptors (without TLS):** Plaintext traffic can be intercepted. (TLS termination is assumed).
+*   **Insiders / Storage Tampering:** Attackers with direct write access to the SQLite database or Valkey instance can forge or hijack active session states.
+
 ## Attack Vectors and Mitigations
 
 ### Replay

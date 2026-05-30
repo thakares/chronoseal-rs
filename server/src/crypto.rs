@@ -2,11 +2,16 @@ use ed25519_dalek::{Signature, VerifyingKey};
 use shared::protocol::HeartbeatRequest;
 use std::collections::BTreeMap;
 
+/// Serializes the heartbeat request into a canonical JSON representation for signature verification.
+///
+/// Uses `BTreeMap` to order top-level keys alphabetically, matching the JavaScript client's
+/// sorting algorithm: `JSON.stringify(obj, Object.keys(obj).sort())`.
+///
+/// # Arguments
+/// * `req` - The heartbeat request to serialize.
 pub fn canonical_signing_message(
     req: &HeartbeatRequest,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    // Build canonical JSON with BTreeMap so keys are sorted alphabetically,
-    // matching the JS client's JSON.stringify(obj, Object.keys(obj).sort()).
     let mut payload: BTreeMap<&str, serde_json::Value> = BTreeMap::new();
     payload.insert("entropyData", serde_json::to_value(&req.entropy_data)?);
     payload.insert("fingerprint", serde_json::to_value(&req.fingerprint)?);
@@ -19,6 +24,14 @@ pub fn canonical_signing_message(
     Ok(serde_json::to_string(&payload)?)
 }
 
+/// Verifies the Ed25519 signature of a client's heartbeat request.
+///
+/// Decodes the signature and compares it strictly against the canonical JSON message
+/// using the client's public key.
+///
+/// # Arguments
+/// * `pub_key_bytes` - The client's public key bytes.
+/// * `req` - The heartbeat request payload containing the signature.
 pub fn verify_signature(
     pub_key_bytes: &[u8],
     req: &HeartbeatRequest,
@@ -31,3 +44,4 @@ pub fn verify_signature(
     pk.verify_strict(message.as_bytes(), &sig)?;
     Ok(())
 }
+

@@ -1,6 +1,14 @@
 use crate::session::AppState;
 use std::sync::Arc;
 
+/// Runs an infinite background loop that periodically cleans up database and memory resources.
+///
+/// Every 60 seconds, this loop performs two tasks:
+/// 1. Evicts expired session records from the configured database storage backend.
+/// 2. Evicts stale rate-limiter entries that have outlived the current rate-limiting window.
+///
+/// # Arguments
+/// * `state` - Shared reference to the server application state.
 pub async fn cleanup_loop(state: Arc<AppState>) {
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(60)).await;
@@ -20,3 +28,4 @@ pub async fn cleanup_loop(state: Arc<AppState>) {
         }
     }
 }
+

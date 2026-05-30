@@ -1,17 +1,28 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+/// A simple, in-memory sliding-window rate limiter for tracking client heartbeat frequency.
 pub struct RateLimiter {
+    /// Maps session identifiers to request counts and window start timestamps.
     buckets: HashMap<String, (u32, Instant)>,
 }
 
 impl RateLimiter {
+    /// Creates a new, empty `RateLimiter`.
     pub fn new() -> Self {
         Self {
             buckets: HashMap::new(),
         }
     }
 
+    /// Evaluates if a request conforms to the rate limit.
+    ///
+    /// Returns `true` if allowed, or `false` if the rate limit is exceeded.
+    ///
+    /// # Arguments
+    /// * `key` - The unique identifier to rate-limit (e.g., session ID).
+    /// * `limit` - The maximum number of allowed requests per window.
+    /// * `window_secs` - The length of the sliding-window in seconds.
     pub fn check(&mut self, key: &str, limit: u32, window_secs: u64) -> bool {
         let now = Instant::now();
         let entry = self.buckets.entry(key.to_string()).or_insert((0, now));
@@ -26,8 +37,12 @@ impl RateLimiter {
         }
     }
 
-    /// Remove entries whose rate-limit window has fully elapsed.
-    /// Call this periodically (e.g. from the cleanup loop) to bound memory usage.
+    /// Evicts expired rate-limit entries whose time windows have fully elapsed.
+    ///
+    /// Intended to be called periodically to bound in-memory map growth.
+    ///
+    /// # Arguments
+    /// * `window_secs` - The active rate-limiting window duration in seconds.
     pub fn evict_stale(&mut self, window_secs: u64) {
         let now = Instant::now();
         self.buckets

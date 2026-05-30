@@ -4,7 +4,8 @@ resolver = "2"
 members = [
     "shared",
     "server",
-    "wasm"
+    "wasm",
+    "chronoseal-replay"
 ]
 
 [workspace.package]

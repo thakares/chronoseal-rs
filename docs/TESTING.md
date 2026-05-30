@@ -2,14 +2,14 @@
 
 ChronoSeal maintains a rigorous, security-first test suite focused on cryptographic correctness, deterministic server ↔ WASM parity, mutation engine integrity, replay resistance, tampering detection, behavioral validation, and storage reliability.
 
-As of **v0.6.1**, the project contains **89 passing tests** across the server, WASM, and shared protocol crates.
+As of **v0.6.1**, the project contains **93 passing tests** across the server, WASM, and shared protocol crates.
 
 | Crate               |  Tests |
 | ------------------- | -----: |
-| `chronoseal-server` |     30 |
+| `chronoseal-server` |     33 |
 | `chronoseal-wasm`   |     24 |
-| `shared`            |     35 |
-| **Total**           | **89** |
+| `shared`            |     36 |
+| **Total**           | **93** |
 
 ---
 
@@ -55,6 +55,7 @@ test_toml_parses_db_type_kebab_case
 test_init_db_pool_sqlite_in_memory
 test_init_db_pool_sqlite_in_disk
 test_init_db_pool_valkey_compat_mode
+test_valkey_store_operations
 ```
 
 ---
@@ -162,13 +163,21 @@ test_validate_mouse_require_activity_toggle
 Storage tests verify:
 
 * SQLite in-memory operation
-* SQLite disk-backed operation
-* Valkey compatibility mode
+* SQLite disk-backed operation & pool concurrency
+* Valkey compatibility mode & pool concurrency operations
 * Session CRUD behavior
 * Expiration cleanup
 * Runtime statistics reporting
 
 These tests ensure storage implementations remain interchangeable without affecting protocol behavior.
+
+Example tests:
+
+```text
+test_sqlite_pool_concurrency
+test_valkey_pool_concurrency
+test_valkey_store_operations
+```
 
 ---
 
@@ -217,7 +226,7 @@ test_rejects_truncated_instruction
 
 # Server Test Coverage (`chronoseal-server`)
 
-The server crate currently contains **30 tests** covering:
+The server crate currently contains **33 tests** covering:
 
 * Configuration
 * Runtime initialization
@@ -256,7 +265,7 @@ These tests ensure browser-generated commitments remain consistent with server e
 
 # Shared Crate Coverage (`shared`)
 
-The shared crate currently contains **35 tests** and represents the core protocol implementation used by both server and browser runtimes.
+The shared crate currently contains **36 tests** and represents the core protocol implementation used by both server and browser runtimes.
 
 Coverage includes:
 
@@ -303,6 +312,7 @@ test_invalid_positions_wrap_deterministically
 ```text
 test_fuzz_style_random_program_bytes_do_not_diverge
 test_performance_smoke_mutation_execution
+test_vm_instruction_budget_soft_cap
 ```
 
 ---
@@ -377,7 +387,7 @@ Planned enhancements include:
 
 ChronoSeal's testing strategy is centered on preserving deterministic behavior, cryptographic correctness, and protocol integrity.
 
-The current suite of **89 tests** provides broad coverage across:
+The current suite of **93 tests** provides broad coverage across:
 
 * Session security
 * Heartbeat validation

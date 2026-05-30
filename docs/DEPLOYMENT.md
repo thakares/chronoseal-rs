@@ -178,12 +178,62 @@ sudo mkdir -p /var/lib/chronoseal
 sudo chown -R chronoseal:chronoseal /var/lib/chronoseal
 ```
 
-For Valkey:
+For Valkey / Redis:
+
+ChronoSeal expects a running Valkey or Redis instance when `db_type` is set to `valkey`.
+
+### 1. Installing Valkey or Redis
+To install Valkey (the recommended open-source option) or Redis on Linux:
+
+* **Valkey (Debian/Ubuntu)**:
+  ```bash
+  sudo apt-get install -y valkey-server
+  ```
+* **Redis (Debian/Ubuntu)**:
+  ```bash
+  sudo apt-get install -y redis-server
+  ```
+
+### 2. Local Setup and Startup
+By default, ChronoSeal searches for Valkey/Redis on `127.0.0.1:6666`. 
+
+You can start a local instance manually:
+```bash
+# Start Valkey on port 6666
+valkey-server --port 6666 --bind 127.0.0.1
+# Or start Redis on port 6666
+redis-server --port 6666 --bind 127.0.0.1
+```
+
+Or run it via Docker:
+```bash
+# Run Valkey container mapping host port 6666 to container port 6379
+docker run -d --name chronoseal-valkey -p 6666:6379 valkey/valkey:latest
+```
+
+### 3. Service Configuration
+Configure the environment variables to point ChronoSeal to your instance:
 
 ```bash
 export CHRONOSEAL_DB_TYPE=valkey
 export CHRONOSEAL_VALKEY_ADDR=127.0.0.1:6666
 ```
+
+#### Providing Credentials & SSL/TLS
+If your Valkey/Redis server requires authentication or secure TLS/SSL, include them directly in the `CHRONOSEAL_VALKEY_ADDR` connection URL:
+
+* **Password Only**:
+  ```bash
+  export CHRONOSEAL_VALKEY_ADDR=redis://:your_password@127.0.0.1:6666
+  ```
+* **Username & Password**:
+  ```bash
+  export CHRONOSEAL_VALKEY_ADDR=redis://your_username:your_password@127.0.0.1:6666
+  ```
+* **Secure Connection (SSL/TLS)**: Use the `rediss://` scheme prefix:
+  ```bash
+  export CHRONOSEAL_VALKEY_ADDR=rediss://your_username:your_password@secure-valkey-host.example.com:6379
+  ```
 
 If Valkey connection setup fails, the current implementation logs a warning and falls back to in-memory SQLite.
 

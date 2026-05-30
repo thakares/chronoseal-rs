@@ -88,10 +88,18 @@ impl From<GeneError> for MutationError {
     }
 }
 
+/// Encodes a `MutationOrder` into standard Base64 representation of its bytecode.
 pub fn encode_order_b64(order: &MutationOrder) -> String {
     base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &order.program)
 }
 
+/// Decodes a `MutationOrder` from its Base64 representation.
+///
+/// Validates that the decoded program size does not exceed the allowed maximum budget size.
+///
+/// # Arguments
+/// * `step` - The step index associated with this mutation order.
+/// * `b64` - The Base64 string containing the raw bytecode.
 pub fn decode_order_b64(step: u64, b64: &str) -> Result<MutationOrder, MutationError> {
     let program = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, b64)
         .map_err(MutationError::Base64)?;
@@ -101,11 +109,27 @@ pub fn decode_order_b64(step: u64, b64: &str) -> Result<MutationOrder, MutationE
     Ok(MutationOrder { step, program })
 }
 
+/// Generates a randomized `MutationOrder` program for a given step and gene size.
+///
+/// Uses thread-local random number generator.
+///
+/// # Arguments
+/// * `step` - The step index.
+/// * `gene_size` - The length of the gene byte buffer.
 pub fn generate_order(step: u64, gene_size: usize) -> MutationOrder {
     let mut rng = rand::thread_rng();
     generate_order_with_rng(&mut rng, step, gene_size)
 }
 
+/// Generates a randomized `MutationOrder` program using a specific custom RNG.
+///
+/// Builds a program containing between 20 and 36 mutation instructions (e.g. loads, point changes,
+/// insertions, deletions, env modifications) and ensures a minimum number of finalize hash steps are included.
+///
+/// # Arguments
+/// * `rng` - The random number generator.
+/// * `step` - The step index.
+/// * `gene_size` - The length of the gene byte buffer.
 pub fn generate_order_with_rng<R: Rng + ?Sized>(
     rng: &mut R,
     step: u64,
@@ -213,10 +237,12 @@ pub fn generate_order_with_rng<R: Rng + ?Sized>(
     MutationOrder { step, program }
 }
 
+/// Clones the `GeneState` and executes the mutation program for `DEFAULT_MUTATION_ROUNDS`.
 pub fn apply_program_clone(state: &GeneState, program: &[u8]) -> Result<GeneState, MutationError> {
     apply_program_clone_with_rounds(state, program, DEFAULT_MUTATION_ROUNDS)
 }
 
+/// Clones the `GeneState` and executes the mutation program for a specific number of rounds.
 pub fn apply_program_clone_with_rounds(
     state: &GeneState,
     program: &[u8],
@@ -227,6 +253,7 @@ pub fn apply_program_clone_with_rounds(
     Ok(next)
 }
 
+/// Executes the mutation program on the mutable `GeneState` reference for a specific number of rounds.
 pub fn apply_program_with_rounds(
     state: &mut GeneState,
     program: &[u8],
@@ -236,11 +263,22 @@ pub fn apply_program_with_rounds(
     Ok(())
 }
 
+/// Executes the mutation program on the mutable `GeneState` reference for `DEFAULT_MUTATION_ROUNDS`.
 pub fn apply_program(state: &mut GeneState, program: &[u8]) -> Result<(), MutationError> {
     let _ = execute_program_with_rounds(state, program, DEFAULT_MUTATION_ROUNDS)?;
     Ok(())
 }
 
+
+/// Executes the mutation program on the mutable `GeneState` reference for multiple rounds.
+///
+/// Implements a soft instruction cost-budget cap check to prevent hostile/inefficient
+/// programs from lagging the host server thread or client runtime.
+///
+/// # Arguments
+/// * `state` - The mutable gene state buffer.
+/// * `program` - The raw bytecode sequence.
+/// * `rounds` - The requested number of execution rounds.
 pub fn execute_program_with_rounds(
     state: &mut GeneState,
     program: &[u8],
@@ -317,6 +355,13 @@ fn estimate_program_cost(program: &[u8]) -> usize {
     cost.max(1)
 }
 
+/// Executes the VM mutation program on the mutable `GeneState` reference.
+///
+/// This interprets VM mutation opcodes to modify the gene byte array and environment records.
+///
+/// # Arguments
+/// * `state` - The mutable gene state to mutate.
+/// * `program` - The raw instruction bytecode slice.
 pub fn execute_program(
     state: &mut GeneState,
     program: &[u8],
@@ -834,5 +879,26 @@ mod tests {
             elapsed.as_secs_f64() < 2.0,
             "mutation execution too slow: {elapsed:?}"
         );
+    }
+
+    #[test]
+    fn test_vm_instruction_budget_soft_cap() {
+        let state = new_state(8).unwrap();
+        // Construct a program with 130 OP_FINALIZE_GENE_HASH instructions.
+        // HASH has HASH_OPCODE_INSTRUCTION_COST = 16.
+        // Total cost will be 130 * 16 = 2080, which exceeds MAX_MUTATION_INSTRUCTION_BUDGET (2048).
+        let program = vec![OP_FINALIZE_GENE_HASH; 130];
+        let cost = estimate_program_cost(&program);
+        assert!(cost >= 2080);
+
+        // Assert that the max allowed rounds is calculated as 1 since cost > budget.
+        let expected_rounds = std::cmp::max(1, MAX_MUTATION_INSTRUCTION_BUDGET / cost);
+        assert_eq!(expected_rounds, 1);
+
+        // Execute the program with a requested 10 rounds.
+        // The runtime should execute it successfully without panic, while applying the round limitation.
+        let mut test_state = state.clone();
+        let trace = execute_program_with_rounds(&mut test_state, &program, 10).unwrap();
+        assert_eq!(trace.final_ip, program.len());
     }
 }

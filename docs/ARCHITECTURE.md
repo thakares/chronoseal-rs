@@ -379,7 +379,7 @@ Storage is abstracted by `DbPool`.
 |---|---|---|
 | SQLite memory | `sqlite-in-memory` | default, process-local, ephemeral |
 | SQLite disk | `sqlite-in-disk` | persisted SQLite file at `db_path` |
-| Valkey | `valkey` | Valkey-compatible session store |
+| Valkey | `valkey` | Valkey-compatible session store utilizing thread-safe connection pooling |
 
 The storage layer must support:
 
@@ -389,7 +389,7 @@ The storage layer must support:
 - delete expired sessions
 - report statistics
 
-`valkey` mode reads `CHRONOSEAL_VALKEY_ADDR`, defaulting to `127.0.0.1:6666`. If connection setup fails, the current implementation logs a warning and falls back to in-memory SQLite.
+`valkey` mode reads `CHRONOSEAL_VALKEY_ADDR`, defaulting to `127.0.0.1:6666`. It establishes a connection pool using `r2d2` and the `redis` client crate. Session IDs are indexed using native Valkey sets (`sessions:ids`) to minimize overhead and avoid lock contention, while individual sessions are persisted with a native TTL (`SET ... EX`) matching their expiration times. If connection setup fails, it logs a warning and falls back to in-memory SQLite.
 
 ## Metrics and Observability
 
