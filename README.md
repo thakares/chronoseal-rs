@@ -20,7 +20,7 @@
     <img src="https://img.shields.io/badge/rust-stable%20%E2%89%A5%201.87-orange.svg" alt="Rust stable >= 1.87">
   </a>
   <a href="https://github.com/thakares/chronoseal-rs/blob/main/docs/REFRACTORING-v0.6.0.md">
-    <img src="https://img.shields.io/badge/version-v0.6.0-green.svg" alt="v0.6.0">
+    <img src="https://img.shields.io/badge/version-v1.0.1-green.svg" alt="v0.6.0">
   </a>
   <img src="https://img.shields.io/badge/wasm-rust--compiled-blueviolet.svg" alt="WASM">
 </p>
