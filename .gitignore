@@ -5,5 +5,3 @@ dist/
 *.log
 .env
 .idea/
-
-.antigravitycli/
