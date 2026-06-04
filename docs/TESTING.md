@@ -1,81 +1,123 @@
 # ChronoSeal Testing Strategy
 
-ChronoSeal maintains a rigorous, security-first test suite focused on cryptographic correctness, deterministic server ↔ WASM parity, mutation engine integrity, replay resistance, tampering detection, behavioral validation, and storage reliability.
+ChronoSeal maintains a security-focused test suite designed to validate cryptographic correctness, deterministic server ↔ WASM parity, replay resistance, mutation engine integrity, browser fingerprint validation, behavioral trust checks, storage reliability, and protocol hardening.
 
-As of **v1.0.1**, the project contains **95 passing tests** across the server, WASM, and shared protocol crates.
+As of **v1.0.2**, the project contains **100 passing tests** across the server, WASM, shared protocol, and property-testing suites.
 
-| Crate                        | Tests  |
-| ---------------------------- | ------ |
-| `chronoseal-server`          | 33     |
-| `chronoseal-wasm`            | 24     |
-| `shared` (unit)              | 36     |
-| `shared` (property-based)    | 2      |
-| **Total**                    | **95** |
+| Crate                           |   Tests |
+| ------------------------------- | ------: |
+| `chronoseal-server`             |      38 |
+| `chronoseal-wasm`               |      24 |
+| `shared` (unit tests)           |      36 |
+| `shared` (property-based tests) |       2 |
+| `chronoseal-replay`             |       0 |
+| **Total**                       | **100** |
 
 ---
 
-## Test Philosophy
+# Test Philosophy
 
-ChronoSeal testing prioritizes:
+ChronoSeal prioritizes testing of security invariants rather than raw coverage percentages.
 
-- **Security invariants** over raw coverage metrics
-- **Deterministic parity** between server and browser WASM runtimes
-- **Negative-path testing** (tampering, replay, malformed input, edge cases)
-- **Property-based and fuzz-style testing** for mutation logic and VM robustness
-- **Performance regression detection**
-- **Long-term protocol stability**
+Primary goals:
 
-Particular emphasis is placed on ensuring that browser-side WASM execution produces identical results to server-side validation.
+* Verify deterministic server ↔ WASM behavior
+* Detect protocol divergence early
+* Prevent replay attacks
+* Validate mutation engine correctness
+* Detect malformed and adversarial input handling
+* Prevent VM and protocol panics
+* Maintain storage backend compatibility
+* Protect browser attestation continuity guarantees
+
+The project emphasizes negative-path testing and adversarial validation rather than only testing successful execution paths.
 
 ---
 
 # Test Categories
 
-## 1. Configuration & CLI
+## 1. Configuration & Runtime
 
 Configuration tests verify:
 
-- Database backend selection
-- TOML configuration parsing
-- Command-line override behavior
-- Default configuration values
-- Runtime initialization logic
+* Default configuration values
+* TOML parsing
+* Runtime initialization
+* Database backend selection
+* CLI override behavior
 
-Supported backends include:
+Covered functionality:
 
-- `sqlite-in-memory`
-- `sqlite-in-disk`
-- `valkey` (redis-compatible via r2d2 connection pool)
+* SQLite in-memory backend
+* SQLite disk backend
+* Valkey compatibility mode
+* Runtime configuration validation
 
 Example tests:
 
-```
-test_apply_run_args_overrides_db_type
+```text
 test_default_db_type_is_sqlite_in_memory
+test_apply_run_args_overrides_db_type
 test_toml_parses_db_type_kebab_case
+test_db_type_report_lists_backends
 test_init_db_pool_sqlite_in_memory
 test_init_db_pool_sqlite_in_disk
 test_init_db_pool_valkey_compat_mode
-test_valkey_store_operations
 ```
 
 ---
 
-## 2. Session Lifecycle & Verification
+## 2. Browser Fingerprint Validation
 
-Session tests validate:
+Introduced and expanded in v1.0.2.
 
-- Session creation
-- Public key validation
-- Expiration handling
-- Replay attack prevention
-- Mutation step enforcement
-- Commitment verification
-- Long-running deterministic parity
+Fingerprint validation protects the attestation pipeline from malformed or unrealistic browser metadata.
+
+Validation coverage includes:
+
+* Aspect ratio validation
+* Device pixel ratio validation
+* Hardware concurrency validation
+* Boundary value acceptance
+* NaN rejection
+* Infinity rejection
+* Malformed numeric value rejection
 
 Example tests:
 
+```text
+accepts_valid_fingerprint
+accepts_boundary_values
+rejects_invalid_aspect_ratios
+rejects_invalid_device_pixel_ratios
+rejects_invalid_hardware_concurrency
 ```
+
+Validation constraints currently include:
+
+| Field               | Allowed Range         |
+| ------------------- | --------------------- |
+| aspectRatio         | finite positive value |
+| devicePixelRatio    | greater than zero     |
+| hardwareConcurrency | 1..=256               |
+
+---
+
+## 3. Session Lifecycle & Protocol Verification
+
+Session tests verify:
+
+* Session creation
+* Session expiration
+* Public key validation
+* Replay attack resistance
+* Mutation commitment verification
+* Mutation step enforcement
+* Deterministic long-running parity
+
+Example tests:
+
+```text
 test_create_session_rejects_invalid_public_key_length
 test_expired_session_is_rejected
 test_replay_attack_is_rejected
@@ -88,46 +130,19 @@ test_deterministic_server_client_parity_across_many_heartbeats
 
 ---
 
-## 3. Mutation Engine (Core Focus)
+## 4. Heartbeat Validation
 
-The Synthetic Gene Mutation Engine is one of the most security-critical components in ChronoSeal.
+Heartbeat tests validate:
 
-Testing focuses on:
-
-- Deterministic server/client parity
-- Mutation order execution
-- Gene state integrity
-- Preview → Commit → Discard lifecycle
-- Randomized mutation programs
-- Edge-case validation
-- Performance regression detection
+* Successful state advancement
+* Silent rejection semantics
+* Commitment validation
+* Rate limiting
+* Next-state mutation generation
 
 Example tests:
 
-```
-test_server_client_parity_across_random_orders
-test_generate_order_is_deterministic_for_seeded_rng
-test_invalid_positions_wrap_deterministically
-test_mutation_chain
-test_fuzz_style_random_program_bytes_do_not_diverge
-test_performance_smoke_mutation_execution
-```
-
----
-
-## 4. Heartbeat Handler
-
-Heartbeat validation tests verify:
-
-- Successful state advancement
-- Silent rejection behavior
-- Commitment validation
-- Rate limiting
-- Next-state mutation generation
-
-Example tests:
-
-```
+```text
 test_handler_success_returns_next_mutation_fields
 test_handler_tampered_commitment_is_silent_failure
 test_handler_rate_limit_returns_no_mutation_data
@@ -135,20 +150,21 @@ test_handler_rate_limit_returns_no_mutation_data
 
 ---
 
-## 5. Trust & Behavioral Validation
+## 5. Behavioral Trust Validation
 
-Behavioral validation tests verify:
+Trust validation focuses on lightweight behavioral signals.
 
-- Minimum mouse activity
-- Minimum movement distance
-- Pause detection
-- Speed thresholds
-- Optional activity requirements
-- Fingerprint-related validation paths
+Coverage includes:
+
+* Minimum event count
+* Minimum movement distance
+* Pause detection
+* Maximum speed thresholds
+* Activity requirement toggles
 
 Example tests:
 
-```
+```text
 test_validate_mouse_success
 test_validate_mouse_insufficient_events
 test_validate_mouse_insufficient_distance
@@ -161,51 +177,79 @@ test_validate_mouse_require_activity_toggle
 
 ## 6. Storage Layer
 
-Storage tests verify:
+Storage tests verify backend correctness and concurrency behavior.
 
-- SQLite in-memory operation
-- SQLite disk-backed operation and pool concurrency
-- Valkey compatibility mode and r2d2 pool concurrency
-- Session CRUD behavior including the `opcodes` field
-- Expiration cleanup
-- Runtime statistics reporting
+Covered backends:
 
-These tests ensure storage implementations remain interchangeable without affecting protocol behavior.
+* SQLite in-memory
+* SQLite disk
+* Valkey compatibility mode
 
 Example tests:
 
-```
+```text
 test_sqlite_pool_concurrency
 test_valkey_pool_concurrency
 test_valkey_store_operations
 ```
 
-> **Note:** The concurrent write collision path in `update_session` (the `old_last_hash`
-> optimistic concurrency guard) is not yet covered by an automated test. Two goroutines
-> advancing the same chain simultaneously is a security-relevant race condition.
-> A dedicated test is planned for v1.1.0 (see Future Improvements).
+Validation includes:
+
+* Session persistence
+* Session updates
+* Concurrent access
+* Statistics collection
+* Backend compatibility
 
 ---
 
-## 7. VM Core
+## 7. Rate Limiting
 
-The VM core is tested extensively across both WASM and shared crates.
+Rate limiter tests verify:
 
-Coverage includes:
-
-- ADD, SUB, MUL, XOR, AND, OR, NOT, HASH, ROT, PUSH
-
-Edge cases include:
-
-- Stack underflow
-- Truncated instructions
-- Unknown opcodes
-- Wrapping arithmetic
-- Invalid instruction streams
+* Request counting
+* Window expiration
+* Stale entry eviction
 
 Example tests:
 
+```text
+test_rate_limiter
+test_rate_limiter_eviction
 ```
+
+---
+
+## 8. VM Core
+
+The VM implementation is tested across both WASM and shared crates.
+
+Covered operations:
+
+```text
+ADD
+SUB
+MUL
+XOR
+AND
+OR
+NOT
+HASH
+ROT
+PUSH
+```
+
+Validation includes:
+
+* Wrapping arithmetic
+* Stack underflow detection
+* Invalid opcode rejection
+* Truncated instruction rejection
+* Instruction safety
+
+Example tests:
+
+```text
 test_add
 test_add_wrapping
 test_sub
@@ -221,163 +265,86 @@ test_rejects_truncated_instruction
 
 ---
 
-## 8. Property-Based Tests
+## 9. Synthetic Gene Mutation Engine
 
-ChronoSeal uses [`proptest`](https://github.com/proptest-rs/proptest) for property-based testing of core protocol invariants against arbitrary random input.
+The mutation engine is a critical security component.
 
-Tests live in `shared/tests/proptests.rs` and run as part of `cargo test --workspace`.
+Coverage includes:
 
-```
-test_vm_execute_never_panics
-test_gene_environment_roundtrip_never_panics
-```
-
-`test_vm_execute_never_panics` feeds arbitrary `Vec<u8>` byte sequences into the stack machine
-and asserts that execution never panics and that the instruction pointer never exceeds the
-program length. This guards against any future VM opcode handler introducing undefined
-behaviour on malformed input.
-
-`test_gene_environment_roundtrip_never_panics` feeds arbitrary bytes into
-`gene::decode_environment` and asserts graceful failure rather than a panic, covering the full
-space of malformed environment payloads a client could send.
-
----
-
-# Server Test Coverage (`chronoseal-server`)
-
-The server crate currently contains **33 tests** covering:
-
-- Configuration
-- Runtime initialization
-- Session management
-- Heartbeat validation
-- Rate limiting
-- Trust validation
-
-The server tests focus heavily on protocol enforcement and security validation.
-
----
-
-# WASM Test Coverage (`chronoseal-wasm`)
-
-The WASM crate currently contains **24 tests** covering:
-
-- VM execution
-- Browser-side mutation lifecycle
-- Gene initialization
-- Mutation preview
-- Mutation commit/discard behavior
-- Deterministic parity with shared logic
+* Mutation order execution
+* Deterministic parity
+* Randomized mutation programs
+* Preview lifecycle
+* Commit lifecycle
+* Discard lifecycle
+* Environment validation
+* Gene integrity
 
 Example tests:
 
-```
+```text
+test_mutation_chain
+test_generate_order_is_deterministic_for_seeded_rng
+test_server_client_parity_across_random_orders
 test_preview_commitment_matches_shared_engine
 test_commit_applies_preview
 test_discard_preview_keeps_committed_state
 test_table_driven_parity_across_many_generated_orders
+test_fuzz_style_random_program_bytes_do_not_diverge
 ```
-
-These tests ensure browser-generated commitments remain consistent with server expectations.
 
 ---
 
-# Shared Crate Coverage (`shared`)
+## 10. Property-Based Testing
 
-The shared crate currently contains **36 unit tests** and **2 property-based tests**, representing
-the core protocol implementation used by both server and browser runtimes.
+ChronoSeal uses `proptest` to validate protocol invariants under arbitrary input.
 
-Coverage includes:
+Property tests:
 
-### Synthetic Gene Engine
-
-```
-test_new_state_with_default_size
-test_new_state_rejects_invalid_sizes
-test_commitment_changes_when_gene_or_environment_changes
-test_encode_decode_environment_roundtrip
-test_table_driven_randomized_environment_roundtrip
-```
-
-### Mutation Engine
-
-```
-test_opcode_insert
-test_opcode_delete
-test_opcode_mutate_point
-test_opcode_apply_mutagen
-test_opcode_finalize_gene_hash
-test_mutation_chain
-```
-
-### Validation & Hardening
-
-```
-test_rejects_stack_underflow
-test_rejects_truncated_instruction
-test_rejects_unknown_opcode
-test_zero_length_gene_is_rejected
-```
-
-### Deterministic Parity
-
-```
-test_server_client_parity_across_random_orders
-test_generate_order_is_deterministic_for_seeded_rng
-test_invalid_positions_wrap_deterministically
-```
-
-### Fuzz & Regression Testing
-
-```
-test_fuzz_style_random_program_bytes_do_not_diverge
-test_performance_smoke_mutation_execution
-test_vm_instruction_budget_soft_cap
-```
-
-### Property-Based Tests (`shared/tests/proptests.rs`)
-
-```
+```text
 test_vm_execute_never_panics
 test_gene_environment_roundtrip_never_panics
 ```
 
----
-
-# Tooling Crates
-
-## `chronoseal-replay`
-
-A standalone replay and audit tool for offline verification of recorded ChronoSeal session
-chains. It is a developer and forensic utility, not a library, and currently carries no
-automated tests. Integration tests against captured session fixtures are planned.
-
-## `fuzz/`
-
-Contains libFuzzer targets for deeper coverage of the VM and gene codec. Run separately
-via `cargo +nightly fuzz run <target>` — not part of the standard `cargo test` suite.
+These tests continuously exercise malformed and randomized inputs to ensure graceful handling and panic resistance.
 
 ---
 
 # Running the Test Suite
 
-Run the full workspace:
+Run all tests:
 
-```
+```bash
 cargo test --workspace
 ```
 
-Run individual crates:
+Run server tests:
 
-```
-cargo test -p shared
-cargo test -p chronoseal-wasm
+```bash
 cargo test -p chronoseal-server
 ```
 
-Display test output:
+Run fingerprint tests only:
 
+```bash
+cargo test -p chronoseal-server fingerprint
 ```
+
+Run WASM tests:
+
+```bash
+cargo test -p chronoseal-wasm
+```
+
+Run shared tests:
+
+```bash
+cargo test -p shared
+```
+
+Show output:
+
+```bash
 cargo test -- --nocapture
 ```
 
@@ -385,71 +352,44 @@ cargo test -- --nocapture
 
 # Critical Security Tests
 
-The following tests protect ChronoSeal's core protocol guarantees and should be treated as
-**release-blocking** if they fail:
+The following tests are considered release-blocking:
 
-```
-test_mutation_commitment_tamper_is_rejected
+```text
 test_replay_attack_is_rejected
+test_mutation_commitment_tamper_is_rejected
 test_handler_tampered_commitment_is_silent_failure
-test_server_client_parity_across_random_orders
 test_deterministic_server_client_parity_across_many_heartbeats
-test_fuzz_style_random_program_bytes_do_not_diverge
+test_server_client_parity_across_random_orders
 test_vm_execute_never_panics
 test_gene_environment_roundtrip_never_panics
+rejects_invalid_aspect_ratios
+rejects_invalid_device_pixel_ratios
+rejects_invalid_hardware_concurrency
 ```
 
-These tests directly validate resistance to replay attacks, protocol divergence, mutation
-tampering, commitment forgery, and VM panic on adversarial input.
-
----
-
-# Contributing New Tests
-
-When adding new functionality:
-
-1. Prefer placing protocol logic tests in `shared/`
-2. Ensure server ↔ WASM parity is validated
-3. Include negative-path test cases
-4. Add randomized or property-based testing where appropriate
-5. Update this document when introducing major new categories
-
----
-
-# Future Improvements
-
-- **Concurrent chain write collision test** — verify that two simultaneous heartbeats for the
-  same session are handled correctly by the `old_last_hash` optimistic concurrency guard in
-  `update_session` (security-critical, planned for v1.1.0)
-- **Browser-driven end-to-end integration tests** — full Playwright or wasm-bindgen-test
-  harness exercising the complete init → heartbeat loop in a real browser environment
-- **Valkey failover testing** — verify graceful degradation and reconnection under r2d2 pool
-  exhaustion and server-side connection drops
-- **Automated benchmark execution in CI** — enforce performance regression thresholds for
-  mutation engine and hash chain operations
-- **Expanded mutation-engine fuzzing** — additional libFuzzer targets for `vm_extensions`
-  opcodes introduced in v0.7.0
-- **CI-enforced performance regression thresholds** — gate releases on measured latency bounds
+These tests directly protect protocol integrity, replay resistance, mutation validation, deterministic execution, and fingerprint hardening.
 
 ---
 
 # Conclusion
 
-ChronoSeal's testing strategy is centered on preserving deterministic behavior, cryptographic
-correctness, and protocol integrity.
+ChronoSeal's testing strategy focuses on preserving deterministic behavior, protocol integrity, cryptographic correctness, browser ↔ server parity, and resistance to malformed or adversarial input.
 
-The current suite of **95 tests** provides broad coverage across:
+The current suite of **100 passing tests** provides comprehensive coverage across:
 
-- Session security
-- Heartbeat validation
-- Mutation engine correctness
-- Deterministic server/WASM parity
-- Trust and behavioral validation
-- Storage abstraction
-- Replay resistance
-- Protocol hardening
-- Property-based VM and gene codec robustness
+* Configuration
+* Runtime initialization
+* Browser fingerprint validation
+* Session lifecycle management
+* Heartbeat verification
+* Mutation engine execution
+* VM safety
+* Behavioral validation
+* Storage backends
+* Replay resistance
+* Property-based protocol hardening
 
-Maintaining and expanding this test suite remains a core project priority as ChronoSeal evolves.
+Maintaining and expanding this test suite remains a core project priority.
 
-**Last Updated:** May 2026 (v1.0.1)
+**Last Updated:** June 2026 (v1.0.2)
+
