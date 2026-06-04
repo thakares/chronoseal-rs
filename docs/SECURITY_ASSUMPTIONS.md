@@ -31,3 +31,10 @@ ChronoSeal is a **cost-raising security layer**. It is designed to force automat
 1.  **Chain Continuity:** A session state cannot bifurcate. Every heartbeat must advance the state head using the latest salt.
 2.  **VM Parity:** Stack state must exactly match the execution output of the server's issued opcode sequence.
 3.  **Dynamic Challenges:** Client gene updates must match the server-issued mutation program.
+
+
+## Additional Assumptions (v1.0.2)
+
+- Fingerprints are sanity signals, not identity proofs.
+- Rate limiting assumes client IP visibility.
+- Security headers reduce browser attack surface.

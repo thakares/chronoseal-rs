@@ -378,3 +378,10 @@ Avoid debug logging in production because internal identifiers may be written to
 - Protect SQLite and log directories with correct ownership.
 - Monitor `/health`, `/stats`, and `/metrics`.
 - Verify `chronoseal config check` after environment or config changes.
+
+
+## v1.0.2 Deployment Notes
+
+- Containers run as a dedicated non-root user.
+- Reverse proxies should forward X-Forwarded-For or X-Real-IP.
+- Security headers are enabled by default.

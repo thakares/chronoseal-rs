@@ -54,3 +54,13 @@ To deny attackers a feedback oracle, the ChronoSeal heartbeat endpoint (`POST /h
 *   **Error Cause:** The client submitted more requests than allowed by the server's rate-limiting config (e.g., `rate_limit_count` per `rate_limit_window_secs`).
 *   **Diagnostic Signal:** The server returns `200 OK` with `{"status": "ok"}` but no next state data.
 *   **Remediation:** Reduce heartbeat frequency or adjust rate limit parameters in the daemon configuration.
+
+
+## Additional v1.0.2 Failure Modes
+
+- Invalid aspect ratio
+- Invalid device pixel ratio
+- Invalid hardware concurrency
+- NaN or infinite fingerprint values
+- Entropy event count exceeds 500
+- Client IP rate limited

@@ -86,3 +86,13 @@ The client VM executes instructions sequentially. The instruction set consists o
 *   `0x08`: Unary Bitwise Not (`!a`). Requires at least 1 element on the stack.
 *   `0x09`: Hash Stack. Hashes all stack elements using BLAKE3 and reduces it to a single `u32` value, clearing the stack and pushing the hash.
 *   *Any other opcode:* Terminates VM execution immediately.
+
+
+## v1.0.2 Protocol Hardening
+
+- Fingerprint aspect ratio validation
+- Device pixel ratio validation
+- Hardware concurrency validation (1..=256)
+- Entropy event cap (500 events)
+- IP-based rate limiting
+- Silent rejection preserved for protocol failures

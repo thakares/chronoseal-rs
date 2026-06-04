@@ -255,3 +255,17 @@ Recommended:
 ## Disclosure
 
 See [../SECURITY.md](../SECURITY.md) for the vulnerability disclosure policy.
+
+
+## Additional Mitigations (v1.0.2)
+
+### Fingerprint Abuse
+- Bounds enforcement
+- Numeric sanity validation
+
+### Resource Exhaustion
+- Entropy event cap
+- Rate limiting
+
+### Browser Hardening
+- Security response headers

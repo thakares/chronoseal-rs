@@ -31,16 +31,16 @@ The optimal values depend on your threat model and expected client hardware.
 | Profile           | `gene_size` | `mutation_rounds` | Security Level   | Recommended Usage                |
 | ----------------- | ----------- | ----------------- | ---------------- | -------------------------------- |
 | Default           | 512         | 4                 | Moderate         | Development and testing          |
-| Recommended       | 2048        | 16                | Strong           | Most production deployments      |
-| High Security     | 4096        | 32                | Very Strong      | Sensitive applications           |
-| Maximum Practical | 8192        | 64                | Extremely Strong | High-value targets               |
-| Experimental      | 65536       | 65536             | Research Only    | Benchmarking and experimentation |
+| Recommended       | 2048        | 4                 | Strong           | Most production deployments      |
+| High Security     | 4096        | 8                 | Very Strong      | Sensitive applications           |
+| Maximum Practical | 4096        | 10                | Extremely Strong | High-value targets               |
+| Experimental      | 4096        | 10                | Research Only    | Benchmarking and experimentation |
 
 ### Recommended Production Configuration
 
 ```toml
 gene_size = 2048
-mutation_rounds = 16
+mutation_rounds = 4
 ```
 
 This configuration provides a strong balance between security and runtime overhead for most deployments.
@@ -55,7 +55,7 @@ Edit your configuration file:
 # Mutation Engine Settings
 
 gene_size = 2048
-mutation_rounds = 16
+mutation_rounds = 4
 ```
 
 Common configuration locations:
@@ -137,7 +137,7 @@ Browser developer tools can also be used to monitor:
 
 ```toml
 gene_size = 2048
-mutation_rounds = 16
+mutation_rounds = 4
 ```
 
 Deploy and observe normal usage patterns.
@@ -158,11 +158,10 @@ Increase one parameter at a time.
 Recommended progression:
 
 ```text
-2048 / 16
-4096 / 16
-4096 / 32
-8192 / 32
-8192 / 64
+2048 / 4
+4096 / 4
+4096 / 8
+4096 / 10
 ```
 
 This makes it easier to identify performance bottlenecks.
@@ -194,9 +193,9 @@ Future deployments may choose to dynamically increase mutation strength based on
 Example policy:
 
 ```text
-New session          → 2048 / 16
-Suspicious session   → 4096 / 32
-Elevated-risk action → 8192 / 64
+New session          → 2048 / 4
+Suspicious session   → 4096 / 8
+Elevated-risk action → 4096 / 10
 ```
 
 ---
@@ -213,7 +212,7 @@ wasm-pack build wasm --target web --release
 
 ### General Guidance
 
-* Keep `mutation_rounds` below 64 for most deployments.
+* Keep `mutation_rounds` at or below 10 for all deployments.
 * Prefer increasing `gene_size` before dramatically increasing rounds.
 * Benchmark on representative client hardware.
 * Monitor browser CPU utilization during load testing.
@@ -260,7 +259,7 @@ For most production deployments:
 
 ```toml
 gene_size = 2048
-mutation_rounds = 16
+mutation_rounds = 4
 ```
 
 This configuration provides a strong balance between security, performance, and compatibility across desktop and mobile devices.
@@ -280,4 +279,14 @@ For diagnostics:
 chronoseal config check
 chronoseal stats
 chronoseal health
+```
+
+
+## v1.0.2 Limits
+
+Current supported range:
+
+```toml
+gene_size = 1..=4096
+mutation_rounds = 1..=10
 ```

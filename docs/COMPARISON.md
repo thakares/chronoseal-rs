@@ -16,7 +16,7 @@ ChronoSeal is a **self-hosted, cryptographic attestation daemon**. This document
 
 ## Detailed Analysis
 
-### 1. ChronoSeal (v0.6.0)
+### 1. ChronoSeal (v1.0.2)
 
 **Strengths:**
 - Strongest **cryptographic foundation** (Ed25519 signatures + Blake3 hash chain + Synthetic Gene Mutation Engine)
@@ -118,3 +118,12 @@ It is particularly well-suited for:
 - Developers who value auditability
 
 ---
+
+
+## v1.0.2 Security Hardening Additions
+
+- Fingerprint validation bounds enforcement
+- Security response headers
+- DashMap-backed concurrent rate limiting
+- WASM panic hardening
+- Non-root container execution
