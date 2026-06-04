@@ -11,7 +11,7 @@ ChronoSeal operates as a stateful, sequential challenge-response chain over HTTP
 ```
 Client (JS/WASM)                                         Server (chronoseald)
       |                                                        |
-      | 1. POST /init { public_key: String } -----------------> |
+      | 1. POST /init { public_key: String } ----------------> |
       |                                                        | (Generates VM Opcodes)
       |                                                        | (Computes initial hash chain head H_0)
       |                                                        | (Saves initial session record)
@@ -19,7 +19,7 @@ Client (JS/WASM)                                         Server (chronoseald)
       |                                                        |
       | [Client executes VM program & prepares gene preview]   |
       |                                                        |
-      | 2. POST /hb { HeartbeatRequest } ---------------------> |
+      | 2. POST /hb { HeartbeatRequest } --------------------> |
       |                                                        | (Loads session & executes CAS check)
       |                                                        | (Verifies Ed25519 signature)
       |                                                        | (Validates VM stack-state parity)
