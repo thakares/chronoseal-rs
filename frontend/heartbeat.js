@@ -77,7 +77,6 @@ async function sendHeartbeat() {
         const sig = sign_message(msg);
         if (!sig) {
             discard_gene_preview();
-            console.error('Keypair not initialised — skipping heartbeat');
             return;
         }
         const resp = await sendRequest('/hb', 'POST', {
@@ -107,11 +106,9 @@ async function sendHeartbeat() {
             pendingMutationOrderB64 = resp.next_mutation_order_b64;
         } else {
             discard_gene_preview();
-            console.warn('Heartbeat rejected');
         }
     } catch (e) {
         discard_gene_preview();
-        console.error(e);
     } finally {
         scheduleNext();
     }

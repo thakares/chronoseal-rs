@@ -117,7 +117,11 @@ fn test_entropy() -> EntropyData {
     }
 }
 
-fn do_handshake(client: &reqwest::blocking::Client, base_url: &str, sk: &SigningKey) -> Result<InitResponse> {
+fn do_handshake(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+    sk: &SigningKey,
+) -> Result<InitResponse> {
     let pk_hex = hex::encode(sk.verifying_key().to_bytes());
     let init_req = InitRequest { public_key: pk_hex };
     let resp = client
@@ -126,7 +130,10 @@ fn do_handshake(client: &reqwest::blocking::Client, base_url: &str, sk: &Signing
         .send()?;
 
     if !resp.status().is_success() {
-        return Err(anyhow!("Handshake failed with HTTP status: {}", resp.status()));
+        return Err(anyhow!(
+            "Handshake failed with HTTP status: {}",
+            resp.status()
+        ));
     }
 
     let init_resp: InitResponse = resp.json()?;
@@ -137,11 +144,17 @@ fn run_built_in_scenarios(client: &reqwest::blocking::Client, base_url: &str) ->
     let mut failures = 0;
 
     let scenarios = [
-        ("valid_progression", run_valid_progression as fn(&reqwest::blocking::Client, &str) -> Result<()>),
+        (
+            "valid_progression",
+            run_valid_progression as fn(&reqwest::blocking::Client, &str) -> Result<()>,
+        ),
         ("stale_replay", run_stale_replay),
         ("invalid_signature", run_invalid_signature),
         ("invalid_vm_stack", run_invalid_vm_stack),
-        ("invalid_mutation_commitment", run_invalid_mutation_commitment),
+        (
+            "invalid_mutation_commitment",
+            run_invalid_mutation_commitment,
+        ),
         ("drifted_timestamp", run_drifted_timestamp),
         ("concurrent_heartbeat", run_concurrent_heartbeat),
         ("rate_limit_trigger", run_rate_limit_trigger),
@@ -197,7 +210,8 @@ fn run_valid_progression(client: &reqwest::blocking::Client, base_url: &str) -> 
             init.mutation_rounds,
         )?;
 
-        let commitment = shared::gene::commitment_hex_with_context(&candidate, &init.session_id, mutation_step);
+        let commitment =
+            shared::gene::commitment_hex_with_context(&candidate, &init.session_id, mutation_step);
         let timestamp = current_time_ms();
         let entropy = test_entropy();
 
@@ -215,13 +229,14 @@ fn run_valid_progression(client: &reqwest::blocking::Client, base_url: &str) -> 
 
         sign_request(&sk, &mut req)?;
 
-        let resp = client
-            .post(format!("{}/hb", base_url))
-            .json(&req)
-            .send()?;
+        let resp = client.post(format!("{}/hb", base_url)).json(&req).send()?;
 
         if !resp.status().is_success() {
-            return Err(anyhow!("Step {} /hb returned HTTP error: {}", step, resp.status()));
+            return Err(anyhow!(
+                "Step {} /hb returned HTTP error: {}",
+                step,
+                resp.status()
+            ));
         }
 
         let hb_resp: HeartbeatResponse = resp.json()?;
@@ -230,9 +245,15 @@ fn run_valid_progression(client: &reqwest::blocking::Client, base_url: &str) -> 
         }
 
         // Verify it was a successful validation (not a silent rejection)
-        let next_salt = hb_resp.next_salt.ok_or_else(|| anyhow!("Step {} was silently rejected", step))?;
-        let next_step = hb_resp.next_mutation_step.ok_or_else(|| anyhow!("Step {} missing next mutation step", step))?;
-        let next_order = hb_resp.next_mutation_order_b64.ok_or_else(|| anyhow!("Step {} missing next mutation order", step))?;
+        let next_salt = hb_resp
+            .next_salt
+            .ok_or_else(|| anyhow!("Step {} was silently rejected", step))?;
+        let next_step = hb_resp
+            .next_mutation_step
+            .ok_or_else(|| anyhow!("Step {} missing next mutation step", step))?;
+        let next_order = hb_resp
+            .next_mutation_order_b64
+            .ok_or_else(|| anyhow!("Step {} missing next mutation order", step))?;
 
         println!("Step {} successful. Salt rotated: {}", step, next_salt);
 
@@ -265,12 +286,21 @@ fn run_stale_replay(client: &reqwest::blocking::Client, base_url: &str) -> Resul
     let sk = SigningKey::generate(&mut csprng);
     let init = do_handshake(client, base_url, &sk)?;
 
-    let opcodes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &init.opcodes_b64)?;
+    let opcodes = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        &init.opcodes_b64,
+    )?;
     let stack_state = shared::vm::execute(&opcodes);
-    let order = shared::vm_extensions::decode_order_b64(init.mutation_step, &init.mutation_order_b64)?;
+    let order =
+        shared::vm_extensions::decode_order_b64(init.mutation_step, &init.mutation_order_b64)?;
     let gene_state = shared::gene::new_state(init.gene_size as usize).unwrap();
-    let candidate = shared::vm_extensions::apply_program_clone_with_rounds(&gene_state, &order.program, init.mutation_rounds)?;
-    let commitment = shared::gene::commitment_hex_with_context(&candidate, &init.session_id, init.mutation_step);
+    let candidate = shared::vm_extensions::apply_program_clone_with_rounds(
+        &gene_state,
+        &order.program,
+        init.mutation_rounds,
+    )?;
+    let commitment =
+        shared::gene::commitment_hex_with_context(&candidate, &init.session_id, init.mutation_step);
 
     let mut req = HeartbeatRequest {
         session_id: init.session_id.clone(),
@@ -296,7 +326,9 @@ fn run_stale_replay(client: &reqwest::blocking::Client, base_url: &str) -> Resul
     let resp2 = client.post(format!("{}/hb", base_url)).json(&req).send()?;
     let hb2: HeartbeatResponse = resp2.json()?;
     if hb2.next_salt.is_some() {
-        return Err(anyhow!("Replayed heartbeat was successfully accepted (broken replay protection)"));
+        return Err(anyhow!(
+            "Replayed heartbeat was successfully accepted (broken replay protection)"
+        ));
     }
 
     println!("Stale replay correctly rejected.");
@@ -308,12 +340,21 @@ fn run_invalid_signature(client: &reqwest::blocking::Client, base_url: &str) -> 
     let sk = SigningKey::generate(&mut csprng);
     let init = do_handshake(client, base_url, &sk)?;
 
-    let opcodes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &init.opcodes_b64)?;
+    let opcodes = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        &init.opcodes_b64,
+    )?;
     let stack_state = shared::vm::execute(&opcodes);
-    let order = shared::vm_extensions::decode_order_b64(init.mutation_step, &init.mutation_order_b64)?;
+    let order =
+        shared::vm_extensions::decode_order_b64(init.mutation_step, &init.mutation_order_b64)?;
     let gene_state = shared::gene::new_state(init.gene_size as usize).unwrap();
-    let candidate = shared::vm_extensions::apply_program_clone_with_rounds(&gene_state, &order.program, init.mutation_rounds)?;
-    let commitment = shared::gene::commitment_hex_with_context(&candidate, &init.session_id, init.mutation_step);
+    let candidate = shared::vm_extensions::apply_program_clone_with_rounds(
+        &gene_state,
+        &order.program,
+        init.mutation_rounds,
+    )?;
+    let commitment =
+        shared::gene::commitment_hex_with_context(&candidate, &init.session_id, init.mutation_step);
 
     let mut req = HeartbeatRequest {
         session_id: init.session_id.clone(),
@@ -344,10 +385,16 @@ fn run_invalid_vm_stack(client: &reqwest::blocking::Client, base_url: &str) -> R
     let sk = SigningKey::generate(&mut csprng);
     let init = do_handshake(client, base_url, &sk)?;
 
-    let order = shared::vm_extensions::decode_order_b64(init.mutation_step, &init.mutation_order_b64)?;
+    let order =
+        shared::vm_extensions::decode_order_b64(init.mutation_step, &init.mutation_order_b64)?;
     let gene_state = shared::gene::new_state(init.gene_size as usize).unwrap();
-    let candidate = shared::vm_extensions::apply_program_clone_with_rounds(&gene_state, &order.program, init.mutation_rounds)?;
-    let commitment = shared::gene::commitment_hex_with_context(&candidate, &init.session_id, init.mutation_step);
+    let candidate = shared::vm_extensions::apply_program_clone_with_rounds(
+        &gene_state,
+        &order.program,
+        init.mutation_rounds,
+    )?;
+    let commitment =
+        shared::gene::commitment_hex_with_context(&candidate, &init.session_id, init.mutation_step);
 
     let mut req = HeartbeatRequest {
         session_id: init.session_id.clone(),
@@ -375,12 +422,18 @@ fn run_invalid_vm_stack(client: &reqwest::blocking::Client, base_url: &str) -> R
     Ok(())
 }
 
-fn run_invalid_mutation_commitment(client: &reqwest::blocking::Client, base_url: &str) -> Result<()> {
+fn run_invalid_mutation_commitment(
+    client: &reqwest::blocking::Client,
+    base_url: &str,
+) -> Result<()> {
     let mut csprng = OsRng;
     let sk = SigningKey::generate(&mut csprng);
     let init = do_handshake(client, base_url, &sk)?;
 
-    let opcodes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &init.opcodes_b64)?;
+    let opcodes = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        &init.opcodes_b64,
+    )?;
     let stack_state = shared::vm::execute(&opcodes);
 
     let mut req = HeartbeatRequest {
@@ -411,12 +464,21 @@ fn run_drifted_timestamp(client: &reqwest::blocking::Client, base_url: &str) -> 
     let sk = SigningKey::generate(&mut csprng);
     let init = do_handshake(client, base_url, &sk)?;
 
-    let opcodes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &init.opcodes_b64)?;
+    let opcodes = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        &init.opcodes_b64,
+    )?;
     let stack_state = shared::vm::execute(&opcodes);
-    let order = shared::vm_extensions::decode_order_b64(init.mutation_step, &init.mutation_order_b64)?;
+    let order =
+        shared::vm_extensions::decode_order_b64(init.mutation_step, &init.mutation_order_b64)?;
     let gene_state = shared::gene::new_state(init.gene_size as usize).unwrap();
-    let candidate = shared::vm_extensions::apply_program_clone_with_rounds(&gene_state, &order.program, init.mutation_rounds)?;
-    let commitment = shared::gene::commitment_hex_with_context(&candidate, &init.session_id, init.mutation_step);
+    let candidate = shared::vm_extensions::apply_program_clone_with_rounds(
+        &gene_state,
+        &order.program,
+        init.mutation_rounds,
+    )?;
+    let commitment =
+        shared::gene::commitment_hex_with_context(&candidate, &init.session_id, init.mutation_step);
 
     let mut req = HeartbeatRequest {
         session_id: init.session_id.clone(),
@@ -446,12 +508,21 @@ fn run_concurrent_heartbeat(client: &reqwest::blocking::Client, base_url: &str) 
     let sk = SigningKey::generate(&mut csprng);
     let init = do_handshake(client, base_url, &sk)?;
 
-    let opcodes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &init.opcodes_b64)?;
+    let opcodes = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        &init.opcodes_b64,
+    )?;
     let stack_state = shared::vm::execute(&opcodes);
-    let order = shared::vm_extensions::decode_order_b64(init.mutation_step, &init.mutation_order_b64)?;
+    let order =
+        shared::vm_extensions::decode_order_b64(init.mutation_step, &init.mutation_order_b64)?;
     let gene_state = shared::gene::new_state(init.gene_size as usize).unwrap();
-    let candidate = shared::vm_extensions::apply_program_clone_with_rounds(&gene_state, &order.program, init.mutation_rounds)?;
-    let commitment = shared::gene::commitment_hex_with_context(&candidate, &init.session_id, init.mutation_step);
+    let candidate = shared::vm_extensions::apply_program_clone_with_rounds(
+        &gene_state,
+        &order.program,
+        init.mutation_rounds,
+    )?;
+    let commitment =
+        shared::gene::commitment_hex_with_context(&candidate, &init.session_id, init.mutation_step);
 
     let mut req = HeartbeatRequest {
         session_id: init.session_id.clone(),
@@ -470,10 +541,8 @@ fn run_concurrent_heartbeat(client: &reqwest::blocking::Client, base_url: &str) 
     let client_clone = client.clone();
     let req_clone = req.clone();
     let url_clone = format!("{}/hb", base_url);
-    
-    let handle = std::thread::spawn(move || {
-        client_clone.post(&url_clone).json(&req_clone).send()
-    });
+
+    let handle = std::thread::spawn(move || client_clone.post(&url_clone).json(&req_clone).send());
 
     let resp2 = client.post(format!("{}/hb", base_url)).json(&req).send()?;
     let resp1_res = handle.join().map_err(|_| anyhow!("Thread panicked"))?;
@@ -485,7 +554,10 @@ fn run_concurrent_heartbeat(client: &reqwest::blocking::Client, base_url: &str) 
     // One must succeed and one must fail (silent rejection) because of CAS check
     let successes = (hb1.next_salt.is_some() as usize) + (hb2.next_salt.is_some() as usize);
     if successes != 1 {
-        return Err(anyhow!("Expected exactly one concurrent heartbeat to succeed. Got: {}", successes));
+        return Err(anyhow!(
+            "Expected exactly one concurrent heartbeat to succeed. Got: {}",
+            successes
+        ));
     }
 
     println!("Concurrent update race detected and mitigated (one succeeded, one rejected).");
@@ -497,12 +569,21 @@ fn run_rate_limit_trigger(client: &reqwest::blocking::Client, base_url: &str) ->
     let sk = SigningKey::generate(&mut csprng);
     let init = do_handshake(client, base_url, &sk)?;
 
-    let opcodes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &init.opcodes_b64)?;
+    let opcodes = base64::Engine::decode(
+        &base64::engine::general_purpose::STANDARD,
+        &init.opcodes_b64,
+    )?;
     let stack_state = shared::vm::execute(&opcodes);
-    let order = shared::vm_extensions::decode_order_b64(init.mutation_step, &init.mutation_order_b64)?;
+    let order =
+        shared::vm_extensions::decode_order_b64(init.mutation_step, &init.mutation_order_b64)?;
     let gene_state = shared::gene::new_state(init.gene_size as usize).unwrap();
-    let candidate = shared::vm_extensions::apply_program_clone_with_rounds(&gene_state, &order.program, init.mutation_rounds)?;
-    let commitment = shared::gene::commitment_hex_with_context(&candidate, &init.session_id, init.mutation_step);
+    let candidate = shared::vm_extensions::apply_program_clone_with_rounds(
+        &gene_state,
+        &order.program,
+        init.mutation_rounds,
+    )?;
+    let commitment =
+        shared::gene::commitment_hex_with_context(&candidate, &init.session_id, init.mutation_step);
 
     let mut req = HeartbeatRequest {
         session_id: init.session_id.clone(),
@@ -534,14 +615,20 @@ fn run_rate_limit_trigger(client: &reqwest::blocking::Client, base_url: &str) ->
     }
 
     if !rate_limited {
-        return Err(anyhow!("Rate limiter was not triggered after 35 rapid requests"));
+        return Err(anyhow!(
+            "Rate limiter was not triggered after 35 rapid requests"
+        ));
     }
 
     println!("Rate limiter correctly triggered.");
     Ok(())
 }
 
-fn run_file_scenario(_client: &reqwest::blocking::Client, _base_url: &str, file_path: &str) -> Result<()> {
+fn run_file_scenario(
+    _client: &reqwest::blocking::Client,
+    _base_url: &str,
+    file_path: &str,
+) -> Result<()> {
     let scenario_content = std::fs::read_to_string(file_path)?;
     let scenario: serde_json::Value = serde_json::from_str(&scenario_content)?;
 

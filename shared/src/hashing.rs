@@ -37,8 +37,8 @@ pub fn next_chain_hash(
     stack: &StackState,
     salt: &[u8],
 ) -> Vec<u8> {
-    let entropy_bytes = serde_json::to_vec(entropy).unwrap();
-    let stack_bytes = serde_json::to_vec(stack).unwrap();
+    let entropy_bytes = serde_json::to_vec(entropy).unwrap_or_default();
+    let stack_bytes = serde_json::to_vec(stack).unwrap_or_default();
 
     let entropy_hash = blake3::hash(&entropy_bytes);
     let stack_hash = blake3::hash(&stack_bytes);
@@ -63,4 +63,3 @@ pub fn hash_stack(stack: &[u32]) -> u32 {
     let hash = blake3::hash(&data);
     u32::from_le_bytes(hash.as_bytes()[..4].try_into().unwrap())
 }
-

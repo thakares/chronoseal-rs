@@ -269,7 +269,6 @@ pub fn apply_program(state: &mut GeneState, program: &[u8]) -> Result<(), Mutati
     Ok(())
 }
 
-
 /// Executes the mutation program on the mutable `GeneState` reference for multiple rounds.
 ///
 /// Implements a soft instruction cost-budget cap check to prevent hostile/inefficient

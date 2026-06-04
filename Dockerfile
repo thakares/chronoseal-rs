@@ -24,4 +24,9 @@ ENV CHRONOSEAL_DB_PATH=/var/lib/chronoseal/chronoseal.sqlite
 ENV CHRONOSEAL_FRONTEND_DIR=/usr/share/chronoseal/frontend
 ENV CHRONOSEAL_PID_FILE=/run/chronoseal.pid
 
+RUN useradd -r -s /bin/false chronoseal
+USER chronoseal
+
+HEALTHCHECK --interval=30s --timeout=3s CMD chronoseal health || exit 1
+
 CMD ["chronoseal", "run"]

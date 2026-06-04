@@ -44,4 +44,3 @@ pub fn verify_signature(
     pk.verify_strict(message.as_bytes(), &sig)?;
     Ok(())
 }
-

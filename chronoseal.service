@@ -27,6 +27,7 @@ RestrictSUIDSGID=yes
 LockPersonality=yes
 SystemCallArchitectures=native
 ReadWritePaths=/run/chronoseal.pid
+ReadWritePaths=/var/lib/chronoseal
 
 # Logging
 StandardOutput=journal

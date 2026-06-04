@@ -161,7 +161,7 @@ Content-Type: application/json
 | `stack_state.ip` | number | yes | VM instruction pointer as an unsigned 16-bit value |
 | `fingerprint.aspectRatio` | string | yes | Screen aspect ratio; server accepts numeric strings in range `0.5..=3.0` |
 | `fingerprint.devicePixelRatio` | string | yes | Device pixel ratio; server accepts numeric strings in range `(0, 5]` |
-| `fingerprint.hardwareConcurrency` | number | yes | Positive hardware concurrency value |
+| `fingerprint.hardwareConcurrency` | number | yes | Hardware concurrency value; server accepts integers in range `1..=256` |
 | `mutation_step` | number | yes | Mutation step currently expected by the server |
 | `gene_commitment` | string | yes | Context-bound commitment produced by the WASM mutation preview |
 | `signature` | string | yes | Ed25519 signature over the canonical payload |

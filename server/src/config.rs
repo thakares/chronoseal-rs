@@ -137,7 +137,9 @@ impl Config {
                 size: self.gene_size,
             });
         }
-        if !(1..=shared::constants::MAX_MUTATION_ROUNDS).contains(&self.mutation_rounds) {
+        if !(shared::constants::MIN_MUTATION_ROUNDS..=shared::constants::MAX_MUTATION_ROUNDS)
+            .contains(&self.mutation_rounds)
+        {
             return Err(ConfigError::InvalidMutationRounds {
                 rounds: self.mutation_rounds,
             });
@@ -274,7 +276,8 @@ impl std::fmt::Display for ConfigError {
             Self::InvalidMutationRounds { rounds } => {
                 write!(
                     f,
-                    "invalid mutation rounds {rounds}; expected 1..={}",
+                    "invalid mutation rounds {rounds}; expected {}..={}",
+                    shared::constants::MIN_MUTATION_ROUNDS,
                     shared::constants::MAX_MUTATION_ROUNDS
                 )
             }

@@ -1,17 +1,20 @@
-use std::collections::HashMap;
+use dashmap::DashMap;
 use std::time::Instant;
 
-/// A simple, in-memory sliding-window rate limiter for tracking client heartbeat frequency.
+/// A lock-free, concurrent sliding-window rate limiter backed by `DashMap`.
+///
+/// All public methods take `&self` (no `&mut self`), so the limiter can live in
+/// an `Arc<AppState>` without a `Mutex` wrapper.
 pub struct RateLimiter {
-    /// Maps session identifiers to request counts and window start timestamps.
-    buckets: HashMap<String, (u32, Instant)>,
+    /// Maps rate-limit keys to request counts and window start timestamps.
+    buckets: DashMap<String, (u32, Instant)>,
 }
 
 impl RateLimiter {
     /// Creates a new, empty `RateLimiter`.
     pub fn new() -> Self {
         Self {
-            buckets: HashMap::new(),
+            buckets: DashMap::new(),
         }
     }
 
@@ -20,19 +23,21 @@ impl RateLimiter {
     /// Returns `true` if allowed, or `false` if the rate limit is exceeded.
     ///
     /// # Arguments
-    /// * `key` - The unique identifier to rate-limit (e.g., session ID).
+    /// * `key` - The unique identifier to rate-limit (e.g., client IP address).
     /// * `limit` - The maximum number of allowed requests per window.
     /// * `window_secs` - The length of the sliding-window in seconds.
-    pub fn check(&mut self, key: &str, limit: u32, window_secs: u64) -> bool {
+    pub fn check(&self, key: &str, limit: u32, window_secs: u64) -> bool {
         let now = Instant::now();
-        let entry = self.buckets.entry(key.to_string()).or_insert((0, now));
-        if now.duration_since(entry.1).as_secs() >= window_secs {
-            *entry = (1, now);
+        let mut entry = self.buckets.entry(key.to_string()).or_insert((0, now));
+        let (count, ts) = entry.value_mut();
+        if now.duration_since(*ts).as_secs() >= window_secs {
+            *count = 1;
+            *ts = now;
             true
-        } else if entry.0 >= limit {
+        } else if *count >= limit {
             false
         } else {
-            entry.0 += 1;
+            *count += 1;
             true
         }
     }
@@ -43,7 +48,7 @@ impl RateLimiter {
     ///
     /// # Arguments
     /// * `window_secs` - The active rate-limiting window duration in seconds.
-    pub fn evict_stale(&mut self, window_secs: u64) {
+    pub fn evict_stale(&self, window_secs: u64) {
         let now = Instant::now();
         self.buckets
             .retain(|_, (_, ts)| now.duration_since(*ts).as_secs() < window_secs);
@@ -58,7 +63,7 @@ mod tests {
 
     #[test]
     fn test_rate_limiter() {
-        let mut rl = RateLimiter::new();
+        let rl = RateLimiter::new();
         // Limit of 2 requests per 1 second window
         assert!(rl.check("user1", 2, 1));
         assert!(rl.check("user1", 2, 1));
@@ -72,7 +77,7 @@ mod tests {
 
     #[test]
     fn test_rate_limiter_eviction() {
-        let mut rl = RateLimiter::new();
+        let rl = RateLimiter::new();
         assert!(rl.check("user1", 1, 1));
         assert_eq!(rl.buckets.len(), 1);
 

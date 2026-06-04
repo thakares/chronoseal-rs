@@ -51,8 +51,14 @@ pub fn compute_next_hash(
 ) -> String {
     let prev = hex::decode(prev_hash_hex).unwrap_or_default();
     let salt = hex::decode(salt_hex).unwrap_or_default();
-    let entropy = serde_json::from_str::<shared::protocol::EntropyData>(entropy_data_json).unwrap();
-    let stack = serde_json::from_str::<shared::protocol::StackState>(stack_state_json).unwrap();
+    let entropy = match serde_json::from_str::<shared::protocol::EntropyData>(entropy_data_json) {
+        Ok(v) => v,
+        Err(_) => return String::new(),
+    };
+    let stack = match serde_json::from_str::<shared::protocol::StackState>(stack_state_json) {
+        Ok(v) => v,
+        Err(_) => return String::new(),
+    };
     let new = shared::hashing::next_chain_hash(&prev, timestamp, &entropy, &stack, &salt);
     hex::encode(new)
 }

@@ -4,11 +4,15 @@ use wasm_bindgen::prelude::*;
 #[wasm_bindgen]
 pub fn run_program(program_b64: &str) -> JsValue {
     use base64::Engine;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(program_b64)
-        .unwrap();
+    let bytes = match base64::engine::general_purpose::STANDARD.decode(program_b64) {
+        Ok(v) => v,
+        Err(_) => return JsValue::NULL,
+    };
     let state = execute(&bytes);
-    serde_wasm_bindgen::to_value(&state).unwrap()
+    match serde_wasm_bindgen::to_value(&state) {
+        Ok(v) => v,
+        Err(_) => JsValue::NULL,
+    }
 }
 
 fn execute(program: &[u8]) -> StackState {

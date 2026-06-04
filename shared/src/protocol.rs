@@ -116,4 +116,3 @@ pub struct StackState {
     /// The final instruction pointer location at program completion or termination.
     pub ip: u16,
 }
-

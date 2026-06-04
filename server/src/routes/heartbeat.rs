@@ -8,21 +8,51 @@ pub async fn handler(
     Json(payload): Json<HeartbeatRequest>,
 ) -> (StatusCode, Json<HeartbeatResponse>) {
     let start_http = std::time::Instant::now();
-    state.heartbeats_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    state
+        .heartbeats_total
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-    // Rate limiting
+    // Cap entropy events to prevent oversized payloads from exhausting memory.
+    if payload.entropy_data.events.len() > 1000 {
+        let http_dur = start_http.elapsed().as_nanos() as u64;
+        state
+            .http_latency_ns
+            .fetch_add(http_dur, std::sync::atomic::Ordering::Relaxed);
+        state
+            .http_ops_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        return (
+            StatusCode::OK,
+            Json(HeartbeatResponse {
+                status: "ok".into(),
+                next_salt: None,
+                next_mutation_step: None,
+                next_mutation_order_b64: None,
+            }),
+        );
+    }
+
+    // Rate limiting (lock-free via DashMap)
     {
         let (limit, window_secs) = {
             let cfg = state.get_config();
             (cfg.rate_limit_count, cfg.rate_limit_window_secs)
         };
-        let mut rl = state.rate_limiter.lock().await;
-        if !rl.check(&payload.session_id, limit, window_secs) {
+        if !state
+            .rate_limiter
+            .check(&payload.session_id, limit, window_secs)
+        {
             tracing::debug!("Rate limit hit: {}", payload.session_id);
-            state.verification_failures_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            state
+                .verification_failures_total
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let http_dur = start_http.elapsed().as_nanos() as u64;
-            state.http_latency_ns.fetch_add(http_dur, std::sync::atomic::Ordering::Relaxed);
-            state.http_ops_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            state
+                .http_latency_ns
+                .fetch_add(http_dur, std::sync::atomic::Ordering::Relaxed);
+            state
+                .http_ops_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return (
                 StatusCode::OK,
                 Json(HeartbeatResponse {
@@ -39,8 +69,12 @@ pub async fn handler(
     let start_db = std::time::Instant::now();
     let db_res = crate::session::verify_heartbeat(&state.db_pool, &config, &payload);
     let db_dur = start_db.elapsed().as_nanos() as u64;
-    state.storage_latency_ns.fetch_add(db_dur, std::sync::atomic::Ordering::Relaxed);
-    state.storage_ops_count.fetch_add(2, std::sync::atomic::Ordering::Relaxed); // read + write
+    state
+        .storage_latency_ns
+        .fetch_add(db_dur, std::sync::atomic::Ordering::Relaxed);
+    state
+        .storage_ops_count
+        .fetch_add(2, std::sync::atomic::Ordering::Relaxed); // read + write
 
     let outcome = match db_res {
         Ok(result) => (
@@ -54,15 +88,21 @@ pub async fn handler(
         ),
         Err(e) => {
             tracing::warn!("Heartbeat failed for {}: {}", payload.session_id, e);
-            state.verification_failures_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            state
+                .verification_failures_total
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             match &e {
                 crate::errors::VerificationError::ChainBroken => {
-                    state.replay_attempts_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    state
+                        .replay_attempts_total
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
                 crate::errors::VerificationError::MutationCommitmentMismatch
                 | crate::errors::VerificationError::MutationProgram(_)
                 | crate::errors::VerificationError::GeneState(_) => {
-                    state.mutation_failures_total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    state
+                        .mutation_failures_total
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 }
                 _ => {}
             }
@@ -79,8 +119,12 @@ pub async fn handler(
     };
 
     let http_dur = start_http.elapsed().as_nanos() as u64;
-    state.http_latency_ns.fetch_add(http_dur, std::sync::atomic::Ordering::Relaxed);
-    state.http_ops_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    state
+        .http_latency_ns
+        .fetch_add(http_dur, std::sync::atomic::Ordering::Relaxed);
+    state
+        .http_ops_count
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
     outcome
 }
@@ -138,7 +182,11 @@ mod tests {
                 },
             ],
         };
-        let program_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &init.opcodes_b64).unwrap();
+        let program_bytes = base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            &init.opcodes_b64,
+        )
+        .unwrap();
         let stack_state = shared::vm::execute(&program_bytes);
 
         let order =
@@ -176,7 +224,7 @@ mod tests {
         let pool = crate::storage::init_pool(Path::new(":memory:")).unwrap();
         let state = Arc::new(AppState {
             db_pool: pool.clone(),
-            rate_limiter: tokio::sync::Mutex::new(crate::ratelimit::RateLimiter::new()),
+            rate_limiter: crate::ratelimit::RateLimiter::new(),
             config: std::sync::RwLock::new(config.clone()),
             heartbeats_total: std::sync::atomic::AtomicU64::new(0),
             verification_failures_total: std::sync::atomic::AtomicU64::new(0),

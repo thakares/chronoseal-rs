@@ -5,17 +5,19 @@ use crate::{
     routes, session,
     storage::{self, StoreStats},
 };
-use axum::{http::StatusCode, response::IntoResponse, routing::get, Json, Router};
+use axum::{
+    extract::ConnectInfo, http::StatusCode, response::IntoResponse, routing::get, Json, Router,
+};
 use serde::Serialize;
 use std::{
     fs,
     io::{Read, Write},
-    net::{SocketAddr, TcpStream},
+    net::{IpAddr, SocketAddr, TcpStream},
     path::Path,
     sync::Arc,
     time::Duration,
 };
-use tokio::sync::{Mutex, Notify};
+use tokio::sync::Notify;
 use tracing::{error, info, warn};
 
 #[derive(Debug, Serialize)]
@@ -144,7 +146,7 @@ pub async fn run_daemon(config: Config) -> Result<(), Box<dyn std::error::Error>
     let db_pool = init_db_pool(&config)?;
     let state = Arc::new(session::AppState {
         db_pool,
-        rate_limiter: Mutex::new(RateLimiter::new()),
+        rate_limiter: RateLimiter::new(),
         config: std::sync::RwLock::new(config.clone()),
         heartbeats_total: std::sync::atomic::AtomicU64::new(0),
         verification_failures_total: std::sync::atomic::AtomicU64::new(0),
@@ -170,7 +172,11 @@ pub async fn run_daemon(config: Config) -> Result<(), Box<dyn std::error::Error>
             tower_http::services::ServeDir::new(&config.frontend_dir),
         )
         .layer(tower_http::cors::CorsLayer::permissive())
+        .layer(axum::middleware::from_fn(
+            crate::middleware::security_headers,
+        ))
         .layer(axum::middleware::from_fn(crate::middleware::log_request))
+        .layer(axum::extract::DefaultBodyLimit::max(64 * 1024)) // 64 KiB
         .with_state(state.clone());
 
     let addr: SocketAddr = config.bind.parse()?;
@@ -178,9 +184,12 @@ pub async fn run_daemon(config: Config) -> Result<(), Box<dyn std::error::Error>
     info!(bind = %config.bind, "chronoseal daemon started");
 
     let shutdown = signal_task(state.clone());
-    let result = axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown)
-        .await;
+    let result = axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown)
+    .await;
 
     remove_pid_file(&config.pid_file);
     result?;
@@ -277,8 +286,12 @@ async fn health_handler() -> impl IntoResponse {
 }
 
 async fn stats_handler(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     axum::extract::State(state): axum::extract::State<Arc<session::AppState>>,
 ) -> Result<Json<StoreStats>, (StatusCode, String)> {
+    if !is_loopback(addr.ip()) {
+        return Err((StatusCode::FORBIDDEN, "Forbidden".to_string()));
+    }
     state
         .db_pool
         .stats()
@@ -287,25 +300,45 @@ async fn stats_handler(
 }
 
 async fn metrics_handler(
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     axum::extract::State(state): axum::extract::State<Arc<session::AppState>>,
 ) -> Result<String, (StatusCode, String)> {
+    if !is_loopback(addr.ip()) {
+        return Err((StatusCode::FORBIDDEN, "Forbidden".to_string()));
+    }
     let stats = state
         .db_pool
         .stats()
         .map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, err.to_string()))?;
 
-    let heartbeats = state.heartbeats_total.load(std::sync::atomic::Ordering::Relaxed);
-    let ver_failures = state.verification_failures_total.load(std::sync::atomic::Ordering::Relaxed);
-    let mut_failures = state.mutation_failures_total.load(std::sync::atomic::Ordering::Relaxed);
-    let replays = state.replay_attempts_total.load(std::sync::atomic::Ordering::Relaxed);
+    let heartbeats = state
+        .heartbeats_total
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let ver_failures = state
+        .verification_failures_total
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let mut_failures = state
+        .mutation_failures_total
+        .load(std::sync::atomic::Ordering::Relaxed);
+    let replays = state
+        .replay_attempts_total
+        .load(std::sync::atomic::Ordering::Relaxed);
 
-    let store_ns = state.storage_latency_ns.load(std::sync::atomic::Ordering::Relaxed) as f64;
+    let store_ns = state
+        .storage_latency_ns
+        .load(std::sync::atomic::Ordering::Relaxed) as f64;
     let store_sum = store_ns / 1_000_000_000.0;
-    let store_count = state.storage_ops_count.load(std::sync::atomic::Ordering::Relaxed);
+    let store_count = state
+        .storage_ops_count
+        .load(std::sync::atomic::Ordering::Relaxed);
 
-    let http_ns = state.http_latency_ns.load(std::sync::atomic::Ordering::Relaxed) as f64;
+    let http_ns = state
+        .http_latency_ns
+        .load(std::sync::atomic::Ordering::Relaxed) as f64;
     let http_sum = http_ns / 1_000_000_000.0;
-    let http_count = state.http_ops_count.load(std::sync::atomic::Ordering::Relaxed);
+    let http_count = state
+        .http_ops_count
+        .load(std::sync::atomic::Ordering::Relaxed);
 
     Ok(format!(
         "# HELP chronoseal_active_sessions Active ChronoSeal sessions\n\
@@ -353,6 +386,13 @@ async fn metrics_handler(
         http_sum,
         http_count
     ))
+}
+
+fn is_loopback(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => v4.is_loopback(),
+        IpAddr::V6(v6) => v6.is_loopback(),
+    }
 }
 
 async fn signal_task(state: Arc<session::AppState>) {

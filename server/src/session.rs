@@ -1,6 +1,6 @@
 pub struct AppState {
     pub db_pool: crate::storage::DbPool,
-    pub rate_limiter: tokio::sync::Mutex<crate::ratelimit::RateLimiter>,
+    pub rate_limiter: crate::ratelimit::RateLimiter,
     pub config: std::sync::RwLock<crate::config::Config>,
     pub heartbeats_total: std::sync::atomic::AtomicU64,
     pub verification_failures_total: std::sync::atomic::AtomicU64,
@@ -271,7 +271,6 @@ mod tests {
         }
     }
 
-
     fn test_fingerprint() -> Fingerprint {
         Fingerprint {
             aspect_ratio: "1.77".to_string(),
@@ -323,8 +322,12 @@ mod tests {
             vm_extensions::apply_program_clone(&client.committed_gene_state, &order.program)
                 .unwrap();
         let entropy = test_entropy();
-        
-        let program_bytes = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &client.opcodes_b64).unwrap();
+
+        let program_bytes = base64::Engine::decode(
+            &base64::engine::general_purpose::STANDARD,
+            &client.opcodes_b64,
+        )
+        .unwrap();
         let stack = shared::vm::execute(&program_bytes);
 
         let mut req = HeartbeatRequest {

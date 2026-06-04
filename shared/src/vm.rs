@@ -25,6 +25,9 @@ pub fn execute(program: &[u8]) -> StackState {
                     program[ip + 3],
                 ]);
                 ip += 4;
+                if stack.len() >= crate::constants::MAX_STACK_DEPTH {
+                    break;
+                }
                 stack.push(val);
             }
             0x01..=0x07 => {
@@ -43,6 +46,9 @@ pub fn execute(program: &[u8]) -> StackState {
                     0x07 => a.rotate_left(b % 32),
                     _ => unreachable!(),
                 };
+                if stack.len() >= crate::constants::MAX_STACK_DEPTH {
+                    break;
+                }
                 stack.push(r);
             }
             0x08 => {
@@ -50,11 +56,17 @@ pub fn execute(program: &[u8]) -> StackState {
                     break;
                 }
                 let a = stack.pop().unwrap();
+                if stack.len() >= crate::constants::MAX_STACK_DEPTH {
+                    break;
+                }
                 stack.push(!a);
             }
             0x09 => {
                 let r = crate::hashing::hash_stack(&stack);
                 stack.clear();
+                if stack.len() >= crate::constants::MAX_STACK_DEPTH {
+                    break;
+                }
                 stack.push(r);
             }
             _ => break,

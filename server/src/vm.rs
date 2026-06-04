@@ -80,7 +80,6 @@ pub fn execute_mutation_order(
     vm_extensions::execute_program(state, &order.program)
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

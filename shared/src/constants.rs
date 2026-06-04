@@ -10,3 +10,4 @@ pub const MAX_MUTATION_ROUNDS: u8 = 10;
 pub const MAX_MUTATION_INSTRUCTION_BUDGET: usize = 2048;
 pub const HASH_OPCODE_INSTRUCTION_COST: usize = 16;
 pub const SOFT_CAP_DURATION_MS: u128 = 50;
+pub const MAX_STACK_DEPTH: usize = 64;

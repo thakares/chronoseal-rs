@@ -49,7 +49,6 @@ pub fn validate_mouse(
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

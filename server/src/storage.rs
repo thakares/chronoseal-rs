@@ -1,8 +1,8 @@
 use crate::config::Config;
+use redis::Commands;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
-use redis::Commands;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StoreStats {
@@ -54,11 +54,12 @@ impl DbPool {
             crate::config::DbType::Valkey => {
                 let addr = std::env::var("CHRONOSEAL_VALKEY_ADDR")
                     .unwrap_or_else(|_| "127.0.0.1:6666".to_string());
-                let connection_string = if addr.starts_with("redis://") || addr.starts_with("rediss://") {
-                    addr.clone()
-                } else {
-                    format!("redis://{}", addr)
-                };
+                let connection_string =
+                    if addr.starts_with("redis://") || addr.starts_with("rediss://") {
+                        addr.clone()
+                    } else {
+                        format!("redis://{}", addr)
+                    };
                 let client = redis::Client::open(connection_string)?;
                 let pool = r2d2::Pool::builder().build(client)?;
                 Ok(DbPool::Valkey(ValkeyStore {
@@ -354,9 +355,19 @@ impl ValkeyStore {
 
         redis::pipe()
             .atomic()
-            .cmd("SET").arg(&key).arg(&value).arg("EX").arg(ttl_seconds)
-            .cmd("ZADD").arg(&self.index_key).arg(record.expires_at).arg(&record.session_id)
-            .cmd("ZADD").arg("sessions:chain_lengths").arg(record.chain_length).arg(&record.session_id)
+            .cmd("SET")
+            .arg(&key)
+            .arg(&value)
+            .arg("EX")
+            .arg(ttl_seconds)
+            .cmd("ZADD")
+            .arg(&self.index_key)
+            .arg(record.expires_at)
+            .arg(&record.session_id)
+            .cmd("ZADD")
+            .arg("sessions:chain_lengths")
+            .arg(record.chain_length)
+            .arg(&record.session_id)
             .query::<()>(&mut *conn)?;
         Ok(())
     }
@@ -400,9 +411,19 @@ impl ValkeyStore {
 
         let response: Option<()> = redis::pipe()
             .atomic()
-            .cmd("SET").arg(&key).arg(&value).arg("EX").arg(ttl_seconds)
-            .cmd("ZADD").arg(&self.index_key).arg(record.expires_at).arg(&record.session_id)
-            .cmd("ZADD").arg("sessions:chain_lengths").arg(record.chain_length).arg(&record.session_id)
+            .cmd("SET")
+            .arg(&key)
+            .arg(&value)
+            .arg("EX")
+            .arg(ttl_seconds)
+            .cmd("ZADD")
+            .arg(&self.index_key)
+            .arg(record.expires_at)
+            .arg(&record.session_id)
+            .cmd("ZADD")
+            .arg("sessions:chain_lengths")
+            .arg(record.chain_length)
+            .arg(&record.session_id)
             .query(&mut *conn)?;
 
         match response {
@@ -422,8 +443,12 @@ impl ValkeyStore {
         if !expired_ids.is_empty() {
             redis::pipe()
                 .atomic()
-                .cmd("ZREM").arg(&self.index_key).arg(&expired_ids)
-                .cmd("ZREM").arg("sessions:chain_lengths").arg(&expired_ids)
+                .cmd("ZREM")
+                .arg(&self.index_key)
+                .arg(&expired_ids)
+                .cmd("ZREM")
+                .arg("sessions:chain_lengths")
+                .arg(&expired_ids)
                 .query::<()>(&mut *conn)?;
         }
         Ok(())
@@ -435,8 +460,12 @@ impl ValkeyStore {
         let sessions: u64 = conn.zcard(&self.index_key)?;
         let expired_sessions: u64 = conn.zcount(&self.index_key, 0, now)?;
 
-        let max_chain_length_res: Vec<(String, u64)> = conn.zrevrange_withscores("sessions:chain_lengths", 0, 0)?;
-        let max_chain_length = max_chain_length_res.first().map(|(_, score)| *score).unwrap_or(0);
+        let max_chain_length_res: Vec<(String, u64)> =
+            conn.zrevrange_withscores("sessions:chain_lengths", 0, 0)?;
+        let max_chain_length = max_chain_length_res
+            .first()
+            .map(|(_, score)| *score)
+            .unwrap_or(0);
 
         Ok(StoreStats {
             sessions,
@@ -449,7 +478,7 @@ impl ValkeyStore {
 pub fn current_time_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .unwrap()
+        .expect("system clock is before UNIX epoch; check system time")
         .as_millis() as u64
 }
 
@@ -459,7 +488,8 @@ mod valkey_tests {
 
     #[test]
     fn test_valkey_store_operations() {
-        let addr = std::env::var("CHRONOSEAL_VALKEY_ADDR").unwrap_or_else(|_| "127.0.0.1:6379".to_string());
+        let addr = std::env::var("CHRONOSEAL_VALKEY_ADDR")
+            .unwrap_or_else(|_| "127.0.0.1:6379".to_string());
         let connection_string = format!("redis://{}", addr);
         let client = match redis::Client::open(connection_string) {
             Ok(c) => c,
@@ -522,10 +552,11 @@ mod valkey_tests {
 
     #[test]
     fn test_valkey_pool_concurrency() {
-        use std::thread;
         use std::sync::Arc;
+        use std::thread;
 
-        let addr = std::env::var("CHRONOSEAL_VALKEY_ADDR").unwrap_or_else(|_| "127.0.0.1:6379".to_string());
+        let addr = std::env::var("CHRONOSEAL_VALKEY_ADDR")
+            .unwrap_or_else(|_| "127.0.0.1:6379".to_string());
         let connection_string = format!("redis://{}", addr);
         let client = match redis::Client::open(connection_string) {
             Ok(c) => c,
@@ -589,7 +620,8 @@ mod valkey_tests {
         // Cleanup
         let mut conn = store_arc.pool.get().unwrap();
         for t in 0..10 {
-            let _: Result<(), _> = conn.del(store_arc.session_key(&format!("valkey_concurrent_{}", t)));
+            let _: Result<(), _> =
+                conn.del(store_arc.session_key(&format!("valkey_concurrent_{}", t)));
         }
         let _: Result<(), _> = conn.del(&store_arc.index_key);
     }
@@ -598,8 +630,8 @@ mod valkey_tests {
 #[cfg(test)]
 mod sqlite_tests {
     use super::*;
-    use std::thread;
     use std::sync::Arc;
+    use std::thread;
 
     #[test]
     fn test_sqlite_pool_concurrency() {
@@ -655,5 +687,3 @@ mod sqlite_tests {
         let _ = std::fs::remove_file(db_path);
     }
 }
-
-

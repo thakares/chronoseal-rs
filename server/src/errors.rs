@@ -25,12 +25,19 @@ pub enum SessionError {
 
     #[error("Invalid gene configuration: {0}")]
     InvalidGeneConfiguration(String),
+
+    #[error("Rate limited")]
+    RateLimited,
 }
 
 impl IntoResponse for SessionError {
     fn into_response(self) -> Response {
         let (status, error_message) = match self {
             SessionError::InvalidPublicKeyLength => (StatusCode::BAD_REQUEST, self.to_string()),
+            SessionError::RateLimited => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "Too many requests".to_string(),
+            ),
             _ => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "Internal server error".to_string(),
