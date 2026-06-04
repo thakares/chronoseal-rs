@@ -102,7 +102,7 @@ Important files:
 | `crypto.rs` | canonical signing payload and Ed25519 signature verification |
 | `storage.rs` | `DbPool`, SQLite, Valkey compatibility, session persistence, stats |
 | `trust.rs` | mouse entropy validation |
-| `fingerprint.rs` | browser signal validation |
+| `fingerprint.rs` | browser signal validation, bounds enforcement, and fingerprint sanity checks |
 | `ratelimit.rs` | per-session rate limiting |
 | `cleanup.rs` | expired session removal |
 
@@ -154,7 +154,7 @@ The daemon builds a single Axum application with:
 Shared runtime state is held in `AppState`:
 
 - `db_pool`: storage backend handle
-- `rate_limiter`: process-local rate limiter
+- `rate_limiter`: process-local DashMap-backed concurrent rate limiter
 - `config`: runtime configuration snapshot behind an `RwLock`
 
 Configuration is resolved in this order:
@@ -291,6 +291,7 @@ The current validation order is:
 11. Enforce timestamp drift bounds.
 12. Validate mouse entropy.
 13. Validate browser fingerprint fields.
+13a. Validate fingerprint bounds and numeric sanity constraints.
 14. Compute the next hash-chain value.
 15. Generate the next mutation order.
 16. Generate the next salt.
@@ -369,6 +370,14 @@ Current checks include:
 - timestamp drift bound
 - basic fingerprint field validation
 
+Current validation includes:
+
+- aspect ratio bounds enforcement
+- device pixel ratio validation
+- hardware concurrency validation (1..=256)
+- rejection of NaN and infinite numeric values
+- rejection of malformed numeric strings
+
 The checks are intentionally bounded and configurable. They should be treated as one layer in the attestation pipeline, not as the primary security primitive.
 
 ## Storage Architecture
@@ -405,6 +414,14 @@ The metrics endpoint reports storage-derived counters including:
 - maximum observed chain length
 
 The daemon uses structured tracing and can log to journald through normal systemd operation. Operators should avoid debug logging in production because internal identifiers may appear in logs.
+
+ChronoSeal applies security response headers including:
+
+- Content-Security-Policy
+- X-Frame-Options
+- X-Content-Type-Options
+- Referrer-Policy
+- Permissions-Policy
 
 ## Trust Boundaries
 
@@ -503,12 +520,25 @@ SQLite disk or Valkey storage
 Recommended deployment properties:
 
 - run under systemd with a dedicated service user
+- container deployments run as a dedicated non-root user by default
 - bind to localhost behind a reverse proxy unless direct exposure is required
 - serve over HTTPS
 - keep debug logs disabled
 - monitor `/health`, `/metrics`, and `/stats`
 - use `sqlite-in-memory` for ephemeral local sessions
 - use `sqlite-in-disk` or `valkey` when sessions must survive process restarts
+
+## Security Hardening (v1.0.2)
+
+Recent hardening improvements include:
+
+- fingerprint bounds validation
+- VM stack depth protection
+- panic-resistant hashing paths
+- panic-resistant WASM helpers
+- DashMap-backed concurrent rate limiting
+- security response headers
+- non-root container execution
 
 ## Limitations
 
