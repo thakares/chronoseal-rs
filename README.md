@@ -20,7 +20,7 @@
     <img src="https://img.shields.io/badge/rust-stable%20%E2%89%A5%201.87-orange.svg" alt="Rust stable >= 1.87">
   </a>
   <a href="https://github.com/thakares/chronoseal-rs/blob/main/docs/REFRACTORING-v0.6.0.md">
-    <img src="https://img.shields.io/badge/version-v1.0.1-green.svg" alt="v0.6.0">
+    <img src="https://img.shields.io/badge/version-v1.0.2-green.svg" alt="v1.0.2">
   </a>
   <img src="https://img.shields.io/badge/wasm-rust--compiled-blueviolet.svg" alt="WASM">
 </p>
@@ -68,6 +68,13 @@ ChronoSeal is a cost-raising attestation layer. It is not a CAPTCHA replacement,
 - Runtime storage abstraction with `sqlite-in-memory`, `sqlite-in-disk`, and `valkey` modes.
 - CLI-first lifecycle, status, health, metrics, stats, config validation, key generation, and shell completions.
 - Privacy-oriented design based on ephemeral session state rather than long-term identity tracking.
+- Security response headers (CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy, X-Content-Type-Options).
+- Fingerprint validation with explicit bounds checking for aspect ratio, device pixel ratio, and hardware concurrency.
+- DashMap-based concurrent rate limiter internals.
+- Non-root Docker container execution.
+- VM stack-depth protection.
+- WASM and hashing panic-resistance safeguards.
+- Progressive Web App (PWA) assets including favicon and web manifest support.
 
 ## How It Works
 
@@ -280,6 +287,13 @@ bash scripts/build.sh
 docker compose up -d --build
 ```
 
+### Container Security
+
+ChronoSeal containers run as a dedicated non-root user by default.
+
+This reduces the impact of potential container compromise and follows container security best practices.
+
+
 ## CLI Reference
 
 Run:
@@ -486,6 +500,18 @@ Rejected response:
 }
 ```
 
+#### Fingerprint Validation
+
+ChronoSeal validates browser fingerprint inputs before processing.
+
+| Field | Accepted Range |
+|---|---|
+| aspectRatio | finite positive value |
+| devicePixelRatio | > 0 |
+| hardwareConcurrency | 1..=256 |
+
+Invalid values including NaN, Infinity, negative values, malformed numeric strings, and out-of-range CPU counts are rejected.
+
 Detailed API semantics are documented in [docs/API.md](docs/API.md).
 
 ## Browser Integration
@@ -630,6 +656,9 @@ It helps defend against:
 - session cloning using only a stolen `session_id`
 - simple scripted clients that do not run the WASM runtime
 - basic browser automation with weak interaction simulation
+- malformed browser fingerprint payloads
+- invalid numeric fingerprint values
+- protocol abuse through oversized fingerprint attributes
 
 It does not claim to stop:
 
@@ -679,6 +708,20 @@ Build release artifacts:
 ```bash
 bash scripts/build.sh
 ```
+
+### Validation Tests
+
+```bash
+cargo test -p chronoseal-server fingerprint
+cargo test -p chronoseal-server
+```
+
+The fingerprint validation suite verifies:
+
+- aspect ratio bounds
+- device pixel ratio bounds
+- hardware concurrency bounds
+- malformed numeric input handling
 
 Generate shell completion:
 
@@ -749,6 +792,36 @@ Print the effective config:
 ```bash
 chronoseal config check --format yaml
 ```
+
+
+## What's New in v1.0.2
+
+### Security Hardening
+
+- Added security response headers.
+- Hardened browser fingerprint validation.
+- Improved WASM-side error handling.
+- Improved hashing safety.
+- Added VM stack-depth protection.
+
+### Runtime Improvements
+
+- Refactored rate limiter internals using DashMap.
+- Improved cleanup task efficiency.
+- Improved configuration validation.
+- Improved deployment hardening.
+
+### Frontend Improvements
+
+- Added favicon and web manifest assets.
+- Added CSP defense-in-depth support.
+- Reduced protocol-state logging in browser consoles.
+
+### Quality
+
+- 38/38 server tests passing.
+- Additional fingerprint validation test coverage.
+
 
 ## Further Reading
 
