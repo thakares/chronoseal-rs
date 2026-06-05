@@ -822,6 +822,39 @@ chronoseal config check --format yaml
 - 38/38 server tests passing.
 - Additional fingerprint validation test coverage.
 
+## Runtime Footprint
+
+ChronoSeal is intentionally designed to maintain a small deployment footprint while providing browser attestation, cryptographic verification, session continuity, and WASM execution capabilities.
+
+Typical v1.0.2 release artifact sizes:
+
+| Component                                       | Approximate Size |
+| ----------------------------------------------- | ---------------: |
+| Native daemon (`chronoseal`)                    |         ~9.1 MiB |
+| Browser runtime (`chronoseal_wasm.wasm`)        |         ~728 KiB |
+| WASM static library (`libchronoseal_wasm.rlib`) |         ~188 KiB |
+
+Example:
+
+```text
+chronoseal
+9501232 bytes
+≈ 9.06 MiB
+
+chronoseal_wasm.wasm
+745569 bytes
+≈ 728 KiB
+```
+
+These compact artifact sizes help:
+
+* reduce deployment overhead
+* minimize container image growth
+* improve cold-start performance
+* reduce browser download size
+* simplify edge and self-hosted deployments
+
+ChronoSeal intentionally avoids heavyweight runtime dependencies and large browser frameworks, allowing the complete attestation stack to remain compact while preserving functionality.
 
 ## Further Reading
 
