@@ -68,6 +68,165 @@ Release binary:
 ```text
 target/release/chronoseal
 ```
+## Binary Hardening Verification
+
+Before packaging or deploying ChronoSeal, verify that the release binary includes the expected platform hardening protections.
+
+### Security Inspection
+
+Inspect the release binary with `checksec`:
+
+```bash
+checksec file target/release/chronoseal
+```
+
+Expected protections:
+
+```text
+Full RELRO
+Stack Canary Found
+NX enabled
+PIE Enabled
+No RPATH
+No RUNPATH
+```
+
+These mitigations help reduce the impact of memory corruption vulnerabilities and runtime exploitation.
+
+### Stripped Production Binary
+
+To verify symbol reduction and release artifact quality:
+
+```bash
+strip target/release/chronoseal -o chronoseal.stripped
+
+nm -D chronoseal.stripped | wc -l
+```
+
+A stripped production binary should expose only a small dynamic symbol set.
+
+Check for remaining debug sections:
+
+```bash
+readelf -S chronoseal.stripped | grep debug
+```
+
+Production artifacts should not contain `.debug_*` sections.
+
+### Source Path Disclosure
+
+Rust release builds may embed local source paths from the build environment.
+
+To reduce path disclosure:
+
+```bash
+RUSTFLAGS="--remap-path-prefix=$HOME=~" \
+cargo build --release
+```
+
+or:
+
+```bash
+RUSTFLAGS="--remap-path-prefix=$(pwd)=." \
+cargo build --release
+```
+
+Recommended release profile:
+
+```toml
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+```
+
+### Runtime Verification
+
+Start the daemon locally:
+
+```bash
+./chronoseal run --bind 127.0.0.1:8080
+```
+
+Expected startup output:
+
+```text
+INFO chronoseal daemon started bind=127.0.0.1:8080
+```
+
+Verify core endpoints:
+
+```bash
+curl http://127.0.0.1:8080/health
+curl http://127.0.0.1:8080/stats
+curl http://127.0.0.1:8080/metrics
+```
+
+Successful responses confirm that:
+
+* configuration loading succeeded
+* storage initialization completed
+* HTTP listeners are active
+* observability endpoints are operational
+
+### PID File Permissions
+
+When running as an unprivileged user, writing directly to `/run` may fail:
+
+```text
+could not write PID file
+Permission denied
+```
+
+For local development:
+
+```bash
+chronoseal run --pid-file /tmp/chronoseal.pid
+```
+
+For production systemd deployments, prefer:
+
+```ini
+RuntimeDirectory=chronoseal
+```
+
+and:
+
+```text
+/run/chronoseal/chronoseal.pid
+```
+
+managed by systemd.
+
+### Additional Validation
+
+Inspect runtime dependencies:
+
+```bash
+ldd target/release/chronoseal
+```
+
+Verify ELF program headers:
+
+```bash
+readelf -l target/release/chronoseal
+```
+
+Look for:
+
+```text
+GNU_RELRO
+GNU_STACK
+```
+
+Confirm binary size:
+
+```bash
+ls -lh target/release/chronoseal
+```
+
+These checks should be performed before publishing release artifacts, container images, or distribution packages.
 
 ## Native Install
 
@@ -379,7 +538,41 @@ Avoid debug logging in production because internal identifiers may be written to
 - Monitor `/health`, `/stats`, and `/metrics`.
 - Verify `chronoseal config check` after environment or config changes.
 
+## Runtime Footprint
 
+ChronoSeal is intentionally designed to maintain a small deployment footprint while providing browser attestation, cryptographic verification, session continuity, and WASM execution capabilities.
+
+Typical v1.0.2 release artifact sizes:
+
+| Component                                       | Approximate Size |
+| ----------------------------------------------- | ---------------: |
+| Native daemon (`chronoseal`)                    |         ~9.1 MiB |
+| Browser runtime (`chronoseal_wasm.wasm`)        |         ~728 KiB |
+| WASM static library (`libchronoseal_wasm.rlib`) |         ~188 KiB |
+
+Example:
+
+```text
+chronoseal
+9501232 bytes
+≈ 9.06 MiB
+
+chronoseal_wasm.wasm
+745569 bytes
+≈ 728 KiB
+```
+
+These compact artifact sizes help:
+
+* reduce deployment overhead
+* minimize container image growth
+* improve cold-start performance
+* reduce browser download size
+* simplify edge and self-hosted deployments
+
+ChronoSeal intentionally avoids heavyweight runtime dependencies and large browser frameworks, allowing the complete attestation stack to remain compact while preserving functionality.
+
+```
 ## v1.0.2 Deployment Notes
 
 - Containers run as a dedicated non-root user.
