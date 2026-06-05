@@ -76,12 +76,12 @@ ChronoSeal is a cost-raising attestation layer. It is not a CAPTCHA replacement,
 - WASM and hashing panic-resistance safeguards.
 - Progressive Web App (PWA) assets including favicon and web manifest support.
 
-✅ ~9 MiB native daemon
-✅ ~728 KiB WASM runtime
-✅ Full RELRO
-✅ PIE enabled
-✅ Stack canaries
-✅ NX enabled
+✅ ~9 MiB native daemon <br/>
+✅ ~728 KiB WASM runtime <br/>
+✅ Full RELRO <br/>
+✅ PIE enabled <br/>
+✅ Stack canaries <br/>
+✅ NX enabled <br/>
 
 ## How It Works
 
