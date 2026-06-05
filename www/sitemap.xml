@@ -1,81 +1,82 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://chronoseal.dev/index.html</loc>
+    <loc>https://chronoseal.nx9.in/</loc>
     <lastmod>2026-06-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://chronoseal.dev/architecture.html</loc>
+    <loc>https://chronoseal.nx9.in/architecture.html</loc>
     <lastmod>2026-06-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://chronoseal.dev/protocol.html</loc>
+    <loc>https://chronoseal.nx9.in/protocol.html</loc>
     <lastmod>2026-06-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://chronoseal.dev/api.html</loc>
+    <loc>https://chronoseal.nx9.in/api.html</loc>
     <lastmod>2026-06-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://chronoseal.dev/deployment.html</loc>
+    <loc>https://chronoseal.nx9.in/deployment.html</loc>
     <lastmod>2026-06-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://chronoseal.dev/threat-model.html</loc>
+    <loc>https://chronoseal.nx9.in/threat-model.html</loc>
     <lastmod>2026-06-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://chronoseal.dev/performance.html</loc>
+    <loc>https://chronoseal.nx9.in/performance.html</loc>
     <lastmod>2026-06-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://chronoseal.dev/philosophy.html</loc>
+    <loc>https://chronoseal.nx9.in/philosophy.html</loc>
     <lastmod>2026-06-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://chronoseal.dev/privacy.html</loc>
+    <loc>https://chronoseal.nx9.in/privacy.html</loc>
     <lastmod>2026-06-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://chronoseal.dev/security.html</loc>
+    <loc>https://chronoseal.nx9.in/security.html</loc>
     <lastmod>2026-06-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://chronoseal.dev/operations.html</loc>
+    <loc>https://chronoseal.nx9.in/operations.html</loc>
     <lastmod>2026-06-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://chronoseal.dev/testing.html</loc>
+    <loc>https://chronoseal.nx9.in/testing.html</loc>
     <lastmod>2026-06-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://chronoseal.dev/comparison.html</loc>
+    <loc>https://chronoseal.nx9.in/comparison.html</loc>
     <lastmod>2026-06-05</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
 </urlset>
+

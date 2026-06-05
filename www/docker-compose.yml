@@ -1,0 +1,43 @@
+name: chronoseal-www
+services:
+    chronoseal:
+        cpu_shares: 90
+        command: []
+        container_name: chronoseal-www
+        deploy:
+            resources:
+                limits:
+                    memory: "33491517440"
+        hostname: chronoseal-www
+        image: nginx:alpine
+        labels:
+            icon: https://github.com/thakares/chronoseal-rs/raw/main/logo/chronoseal.svg
+        networks:
+            default: null
+        ports:
+            - mode: ingress
+              target: 80
+              published: "8383"
+              protocol: tcp
+        restart: unless-stopped
+        volumes:
+            - type: bind
+              source: /DATA/AppData/chronoseal-www
+              target: /usr/share/nginx/html
+              read_only: true
+              bind:
+                create_host_path: true
+networks:
+    default:
+        name: chronoseal-www_default
+x-casaos:
+    author: self
+    category: self
+    hostname: ""
+    icon: https://github.com/thakares/chronoseal-rs/raw/main/logo/chronoseal.svg
+    index: /
+    is_uncontrolled: false
+    port_map: "8383"
+    scheme: http
+    title:
+        custom: chronoseal-www

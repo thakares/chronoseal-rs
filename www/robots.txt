@@ -3,4 +3,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://chronoseal.dev/sitemap.xml
+Sitemap: https://chronoseal.nx9.in/sitemap.xml
