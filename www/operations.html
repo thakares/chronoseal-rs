@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Operations Handbook | ChronoSeal Documentation</title>
+  <meta name="description" content="ChronoSeal Operations Handbook, detailing deployment, monitoring, scaling, failure diagnosis, and debugging options.">
+  <link rel="stylesheet" href="css/chronoseal.css">
+  <link rel="stylesheet" href="css/docs.css">
+  <link rel="stylesheet" href="css/print.css" media="print">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  
+  <!-- Font Awesome for Icons -->
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" 
+        integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" 
+        crossorigin="anonymous" 
+        referrerpolicy="no-referrer" />
+</head>
+<body>
+
+  <!-- Floating Background Spheres -->
+  <div class="bg-animation">
+    <div class="gradient-sphere sphere-1"></div>
+    <div class="gradient-sphere sphere-2"></div>
+    <div class="gradient-sphere sphere-3"></div>
+  </div>
+
+  <!-- Header / Navbar -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="logo">
+        <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo">
+        <span>ChronoSeal</span>
+      </a>
+      <div class="nav-links" id="navLinks">
+        <a href="philosophy.html">Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html">Protocol</a>
+        <a href="comparison.html">Comparison</a>
+        <div class="nav-dropdown">
+          <a href="#" class="nav-link">More <small>▼</small></a>
+          <div class="nav-dropdown-menu">
+            <a href="api.html">API Reference</a>
+            <a href="deployment.html">Deployment Guide</a>
+            <a href="operations.html" class="active">Operations Guide</a>
+            <a href="testing.html">Testing Strategy</a>
+            <a href="performance.html">Performance Tuning</a>
+            <a href="threat-model.html">Threat Model</a>
+            <a href="security.html">Security Policy</a>
+            <a href="privacy.html">Privacy Policy</a>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-icon search-trigger" aria-label="Search" onclick="ChronoSearch.open()">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        </button>
+        <a href="https://github.com/thakares/chronoseal-rs" class="github-btn" target="_blank" rel="noopener">
+          <i class="fab fa-github"></i> GitHub
+        </a>
+      </div>
+      <button class="nav-toggle" id="menuBtn" aria-label="Toggle Navigation">
+        <i class="fas fa-bars"></i>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Doc Page Shell -->
+  <div class="doc-page">
+    <div class="doc-layout">
+      
+      <!-- Sidebar -->
+      <aside class="doc-sidebar">
+        <button class="doc-sidebar-toggle">
+          <i class="fas fa-bars"></i> Sidebar Menu
+        </button>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Core Concepts</div>
+          <a href="philosophy.html" class="doc-nav-item">Design Philosophy</a>
+          <a href="architecture.html" class="doc-nav-item">Architecture Overview</a>
+          <a href="comparison.html" class="doc-nav-item">ChronoSeal vs Others</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Protocol &amp; API</div>
+          <a href="protocol.html" class="doc-nav-item">Protocol Specification</a>
+          <a href="api.html" class="doc-nav-item">API Reference</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Operations &amp; Security</div>
+          <a href="threat-model.html" class="doc-nav-item">Threat Model</a>
+          <a href="security.html" class="doc-nav-item">Security Policy</a>
+          <a href="privacy.html" class="doc-nav-item">Privacy Policy</a>
+          <a href="performance.html" class="doc-nav-item">Performance Tuning</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Lifecycle &amp; Dev</div>
+          <a href="deployment.html" class="doc-nav-item">Deployment Guide</a>
+          <a href="operations.html" class="doc-nav-item active">Operations Handbook</a>
+          <a href="testing.html" class="doc-nav-item">Testing Strategy</a>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="doc-main">
+        <nav class="doc-breadcrumb" aria-label="Breadcrumb">
+          <a href="index.html">Home</a>
+          <span class="sep">/</span>
+          <a href="#">Lifecycle &amp; Dev</a>
+          <span class="sep">/</span>
+          <span>Operations Handbook</span>
+        </nav>
+        
+        <article class="doc-content">
+          <h1>Operations &amp; Diagnostics Handbook</h1>
+          <p class="doc-subtitle">This guide details how to monitor, scale, maintain, and debug the ChronoSeal daemon (<code>chronoseal</code>) in production environments.</p>
+          
+          <hr>
+
+          <h2>Systemd Service Configuration</h2>
+          <p>On single-node Linux systems, run the daemon under systemd. The standard service unit file is configured at <code>/etc/systemd/system/chronoseal.service</code>:</p>
+          
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">systemd Unit File</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>[Unit]
+Description=ChronoSeal Attestation Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=chronoseal
+Group=chronoseal
+WorkingDirectory=/var/lib/chronoseal
+ExecStart=/usr/local/bin/chronoseal run --config /etc/chronoseal.toml
+Restart=always
+RestartSec=5
+LimitNOFILE=65536
+
+# Hardening
+ProtectSystem=full
+ProtectHome=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target</code></pre>
+          </div>
+
+          <p>Reload and enable the service:</p>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">Shell</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>sudo systemctl daemon-reload
+sudo systemctl enable --now chronoseal</code></pre>
+          </div>
+
+          <h2>Reverse Proxy &amp; TLS Termination</h2>
+          <p>Do not expose the raw ChronoSeal port directly to the internet. Always terminate TLS using Nginx, HAProxy, or a cloud load balancer. A sample Nginx setup is shown below:</p>
+          
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">Nginx config</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>server {
+    listen 443 ssl http2;
+    server_name attestation.example.com;
+
+    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}</code></pre>
+          </div>
+
+          <h2>Storage &amp; Horizontal Scaling</h2>
+          
+          <h3>Single Node (SQLite)</h3>
+          <p>Set <code>db_type = "sqlite-in-disk"</code> and configure a writeable path in <code>db_path</code>. Optimistic Compare-And-Swap (CAS) locking prevents concurrency errors, but high transaction loads may face write lock queuing.</p>
+
+          <h3>Multi-Node Scaling (Valkey / Redis)</h3>
+          <p>For high availability, run multiple stateless <code>chronoseal</code> instances behind a load balancer and set <code>db_type = "valkey"</code>. Connect all nodes to the same shared Valkey/Redis instance using <code>CHRONOSEAL_VALKEY_ADDR</code>. This keeps sessions consistent across all server nodes.</p>
+
+          <h2>Monitoring &amp; Observability</h2>
+          <p>Configure Prometheus to scrape operational metrics from `/metrics`:</p>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">Prometheus config</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>scrape_configs:
+  - job_name: 'chronoseal'
+    static_configs:
+      - targets: ['localhost:3000']</code></pre>
+          </div>
+          <p>Set alerts for these key metrics:</p>
+          <ul>
+            <li><code>chronoseal_sessions</code>: Spike suggests rate limit thresholds should be reviewed or a scraper campaign is initiating.</li>
+            <li><code>chronoseal_max_chain_length</code>: Tracks session duration. Low values suggest clients are failing attestation.</li>
+          </ul>
+
+          <h2>Failure Diagnostic Guide</h2>
+          <p>Because ChronoSeal returns a silent success response <code>{"status":"ok"}</code> on heartbeat rejections, check the following variables when debugging client integration issues:</p>
+          
+          <h3>A. Clock Drift (<code>TimestampDrift</code>)</h3>
+          <p><strong>Cause:</strong> Client machine clock differs from the server clock by more than 30 seconds (<code>max_timestamp_drift_ms</code>). Sync both clocks using NTP.</p>
+
+          <h3>B. Out-of-Sequence Replays (<code>ChainBroken</code>)</h3>
+          <p><strong>Cause:</strong> Client submitted a <code>prev_hash</code> that does not match the server's <code>last_hash</code>. This occurs when network packet drops cause retries from outdated states, or if an attacker attempts replay. The client must restart liveness via <code>/init</code>.</p>
+
+          <h3>C. Signature Mismatch (<code>Signature</code>)</h3>
+          <p><strong>Cause:</strong> The Ed25519 signature over the canonical JSON payload is invalid. Verify that the client orders JSON keys alphabetically (<code>entropyData</code>, <code>fingerprint</code>, <code>geneCommitment</code>, <code>mutationStep</code>, <code>prevHash</code>, <code>sessionId</code>, <code>stackState</code>, <code>timestamp</code>) and serializes types correctly.</p>
+
+          <h3>D. VM State Mismatch (<code>VmStackMismatch</code>)</h3>
+          <p><strong>Cause:</strong> Client's VM <code>stack_state</code> differs from server re-execution results. Ensure the browser VM implementation wraps 32-bit math correctly matching <code>shared/src/vm.rs</code>.</p>
+        </article>
+
+        <!-- Pager -->
+        <nav class="doc-pager" aria-label="Doc navigation Pager">
+          <a href="performance.html" class="doc-pager-link">
+            <div class="doc-pager-label">Previous</div>
+            <div class="doc-pager-title">Performance Tuning</div>
+          </a>
+          <a href="deployment.html" class="doc-pager-link doc-pager-link--next">
+            <div class="doc-pager-label">Next</div>
+            <div class="doc-pager-title">Deployment Guide</div>
+          </a>
+        </nav>
+
+        <div class="doc-meta">
+          Last Updated: June 2026 (v1.0.2)
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-section">
+        <h4>
+          <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo" style="width: 24px; height: 24px; vertical-align: middle;"> ChronoSeal
+        </h4>
+        <p>Next-generation browser attestation daemon built for the modern web.</p>
+      </div>
+      <div class="footer-section">
+        <h4>Resources</h4>
+        <a href="philosophy.html">Design Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html">Protocol</a>
+        <a href="api.html">API Reference</a>
+        <a href="comparison.html">Comparison</a>
+      </div>
+      <div class="footer-section">
+        <h4>Community</h4>
+        <a href="https://github.com/thakares/chronoseal-rs" target="_blank" rel="noopener"><i class="fab fa-github"></i> GitHub</a>
+        <a href="deployment.html"><i class="fas fa-rocket"></i> Deployment</a>
+        <a href="testing.html"><i class="fas fa-vial"></i> Testing</a>
+      </div>
+      <div class="footer-section">
+        <h4>Legal &amp; Security</h4>
+        <a href="security.html">Security Policy</a>
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="performance.html">Performance Tuning</a>
+        <a href="operations.html">Operations Guide</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 ChronoSeal Project. Built with 🦀 Rust and ❤️ for open source.</p>
+    </div>
+  </footer>
+
+  <!-- Search Overlay -->
+  <div class="search-overlay">
+    <div class="search-box">
+      <div class="search-input-wrap">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        <input type="text" class="search-input" placeholder="Search documentation... (Esc to close)">
+        <span class="search-kbd">/</span>
+      </div>
+      <div class="search-results"></div>
+    </div>
+  </div>
+
+  <!-- Back to top -->
+  <a href="#" class="back-to-top" aria-label="Back to top">▲</a>
+
+  <!-- JS Scripts -->
+  <script src="js/search.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

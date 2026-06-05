@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Deployment Guide | ChronoSeal Documentation</title>
+  <meta name="description" content="ChronoSeal Deployment Guide, detailing compiler requirements, native installation script, environment variables, Nginx configurations, and Docker integration.">
+  <link rel="stylesheet" href="css/chronoseal.css">
+  <link rel="stylesheet" href="css/docs.css">
+  <link rel="stylesheet" href="css/print.css" media="print">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  
+  <!-- Font Awesome for Icons -->
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" 
+        integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" 
+        crossorigin="anonymous" 
+        referrerpolicy="no-referrer" />
+</head>
+<body>
+
+  <!-- Floating Background Spheres -->
+  <div class="bg-animation">
+    <div class="gradient-sphere sphere-1"></div>
+    <div class="gradient-sphere sphere-2"></div>
+    <div class="gradient-sphere sphere-3"></div>
+  </div>
+
+  <!-- Header / Navbar -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="logo">
+        <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo">
+        <span>ChronoSeal</span>
+      </a>
+      <div class="nav-links" id="navLinks">
+        <a href="philosophy.html">Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html">Protocol</a>
+        <a href="comparison.html">Comparison</a>
+        <div class="nav-dropdown">
+          <a href="#" class="nav-link">More <small>▼</small></a>
+          <div class="nav-dropdown-menu">
+            <a href="api.html">API Reference</a>
+            <a href="deployment.html" class="active">Deployment Guide</a>
+            <a href="operations.html">Operations Guide</a>
+            <a href="testing.html">Testing Strategy</a>
+            <a href="performance.html">Performance Tuning</a>
+            <a href="threat-model.html">Threat Model</a>
+            <a href="security.html">Security Policy</a>
+            <a href="privacy.html">Privacy Policy</a>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-icon search-trigger" aria-label="Search" onclick="ChronoSearch.open()">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        </button>
+        <a href="https://github.com/thakares/chronoseal-rs" class="github-btn" target="_blank" rel="noopener">
+          <i class="fab fa-github"></i> GitHub
+        </a>
+      </div>
+      <button class="nav-toggle" id="menuBtn" aria-label="Toggle Navigation">
+        <i class="fas fa-bars"></i>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Doc Page Shell -->
+  <div class="doc-page">
+    <div class="doc-layout">
+      
+      <!-- Sidebar -->
+      <aside class="doc-sidebar">
+        <button class="doc-sidebar-toggle">
+          <i class="fas fa-bars"></i> Sidebar Menu
+        </button>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Core Concepts</div>
+          <a href="philosophy.html" class="doc-nav-item">Design Philosophy</a>
+          <a href="architecture.html" class="doc-nav-item">Architecture Overview</a>
+          <a href="comparison.html" class="doc-nav-item">ChronoSeal vs Others</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Protocol &amp; API</div>
+          <a href="protocol.html" class="doc-nav-item">Protocol Specification</a>
+          <a href="api.html" class="doc-nav-item">API Reference</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Operations &amp; Security</div>
+          <a href="threat-model.html" class="doc-nav-item">Threat Model</a>
+          <a href="security.html" class="doc-nav-item">Security Policy</a>
+          <a href="privacy.html" class="doc-nav-item">Privacy Policy</a>
+          <a href="performance.html" class="doc-nav-item">Performance Tuning</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Lifecycle &amp; Dev</div>
+          <a href="deployment.html" class="doc-nav-item active">Deployment Guide</a>
+          <a href="operations.html" class="doc-nav-item">Operations Handbook</a>
+          <a href="testing.html" class="doc-nav-item">Testing Strategy</a>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="doc-main">
+        <nav class="doc-breadcrumb" aria-label="Breadcrumb">
+          <a href="index.html">Home</a>
+          <span class="sep">/</span>
+          <a href="#">Lifecycle &amp; Dev</a>
+          <span class="sep">/</span>
+          <span>Deployment Guide</span>
+        </nav>
+        
+        <article class="doc-content">
+          <h1>ChronoSeal Deployment Guide</h1>
+          <p class="doc-subtitle">ChronoSeal runs as a native Unix daemon behind TLS, serving WebAssembly assets. This guide covers building, configuring, and service installation options.</p>
+          
+          <hr>
+
+          <h2>System Requirements</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Requirement</th>
+                <th>Min Version</th>
+                <th>Core Purpose</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Rust (cargo)</td>
+                <td>1.87 stable</td>
+                <td>Compile server binary and shared libraries</td>
+              </tr>
+              <tr>
+                <td>wasm-pack</td>
+                <td>0.13</td>
+                <td>Generate the browser WebAssembly module package</td>
+              </tr>
+              <tr>
+                <td>wasm32 target</td>
+                <td>stable</td>
+                <td>Required target for cargo wasm32 compilation</td>
+              </tr>
+              <tr>
+                <td>systemd</td>
+                <td>248+</td>
+                <td>Service management and sandbox isolation</td>
+              </tr>
+              <tr>
+                <td>Docker</td>
+                <td>24.x</td>
+                <td>Containerization support</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h2>Building from Source</h2>
+          <p>Install the Rust WASM build targets and tools:</p>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">Shell</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>rustup target add wasm32-unknown-unknown
+cargo install wasm-pack</code></pre>
+          </div>
+
+          <p>Build the browser WASM package and compile the server daemon:</p>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">Shell</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code># Build WASM package and copy to frontend assets
+wasm-pack build wasm --target web --release
+rm -rf frontend/pkg
+mv wasm/pkg frontend/pkg
+
+# Build release server daemon
+cargo build -p chronoseal-server --bin chronoseal --release</code></pre>
+          </div>
+          <p>The compiled binary is written to <code>target/release/chronoseal</code>.</p>
+
+          <h2>Native Service Installation</h2>
+          <p>The easiest way to deploy ChronoSeal on Linux is using our installer script. This creates a dedicated system user, configures directory paths, copies assets, and sets up systemd sandboxing:</p>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">Shell</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>sudo bash scripts/install.sh</code></pre>
+          </div>
+          <p>Verify installation operational status:</p>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">Shell</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>sudo systemctl status chronoseal
+chronoseal health
+sudo journalctl -u chronoseal -f</code></pre>
+          </div>
+
+          <h2>Configuration Precedence</h2>
+          <p>ChronoSeal resolves configuration variables in this order:
+            <code>CLI parameters</code> &gt; <code>CHRONOSEAL_* Environment Variables</code> &gt; <code>TOML file</code> &gt; <code>Defaults</code>.
+          </p>
+          <p>The TOML configuration is searched at:
+            <code>$CHRONOSEAL_CONFIG</code>, <code>/etc/chronoseal/config.toml</code>, <code>~/.config/chronoseal/config.toml</code>.
+          </p>
+
+          <h3>Common Environment overrides</h3>
+          <ul>
+            <li><code>CHRONOSEAL_BIND</code>: Binding address (e.g. <code>127.0.0.1:3000</code>).</li>
+            <li><code>CHRONOSEAL_DB_TYPE</code>: <code>sqlite-in-memory</code>, <code>sqlite-in-disk</code>, or <code>valkey</code>.</li>
+            <li><code>CHRONOSEAL_VALKEY_ADDR</code>: Address of Valkey server (defaults to <code>127.0.0.1:6666</code>).</li>
+            <li><code>CHRONOSEAL_FRONTEND_DIR</code>: Directory containing frontend static assets.</li>
+          </ul>
+
+          <h2>Reverse Proxy Configuration (Nginx)</h2>
+          <p>Ensure ChronoSeal runs behind TLS in production. Secure proxy traffic to the local daemon port:</p>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">Nginx</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>location / {
+    proxy_pass         http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header   Host $host;
+    proxy_set_header   X-Real-IP $remote_addr;
+    proxy_set_header   X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header   X-Forwarded-Proto $scheme;
+}</code></pre>
+          </div>
+
+          <h2>Docker Compose Deployment</h2>
+          <p>Build and run the container service (configured for non-root execution by default):</p>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">Shell</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>bash scripts/build.sh
+docker compose up -d --build</code></pre>
+          </div>
+
+          <h2>Production Checklist</h2>
+          <ul>
+            <li>Ensure WASM modules in <code>frontend/pkg</code> are rebuilt with the <code>--release</code> flag.</li>
+            <li>Serve all ChronoSeal endpoints exclusively over HTTPS.</li>
+            <li>Restict server bind address to localhost (<code>127.0.0.1</code>) behind a reverse proxy.</li>
+            <li>Run the daemon service under a dedicated unprivileged user account.</li>
+            <li>Disable debug logging (avoid <code>CHRONOSEAL_LOG=debug</code>) in production to protect credentials.</li>
+            <li>Configure Valkey or persistent SQLite for production session storage.</li>
+          </ul>
+        </article>
+
+        <!-- Pager -->
+        <nav class="doc-pager" aria-label="Doc navigation Pager">
+          <a href="operations.html" class="doc-pager-link">
+            <div class="doc-pager-label">Previous</div>
+            <div class="doc-pager-title">Operations Handbook</div>
+          </a>
+          <a href="testing.html" class="doc-pager-link doc-pager-link--next">
+            <div class="doc-pager-label">Next</div>
+            <div class="doc-pager-title">Testing Strategy</div>
+          </a>
+        </nav>
+
+        <div class="doc-meta">
+          Last Updated: June 2026 (v1.0.2)
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-section">
+        <h4>
+          <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo" style="width: 24px; height: 24px; vertical-align: middle;"> ChronoSeal
+        </h4>
+        <p>Next-generation browser attestation daemon built for the modern web.</p>
+      </div>
+      <div class="footer-section">
+        <h4>Resources</h4>
+        <a href="philosophy.html">Design Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html">Protocol</a>
+        <a href="api.html">API Reference</a>
+        <a href="comparison.html">Comparison</a>
+      </div>
+      <div class="footer-section">
+        <h4>Community</h4>
+        <a href="https://github.com/thakares/chronoseal-rs" target="_blank" rel="noopener"><i class="fab fa-github"></i> GitHub</a>
+        <a href="deployment.html"><i class="fas fa-rocket"></i> Deployment</a>
+        <a href="testing.html"><i class="fas fa-vial"></i> Testing</a>
+      </div>
+      <div class="footer-section">
+        <h4>Legal &amp; Security</h4>
+        <a href="security.html">Security Policy</a>
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="performance.html">Performance Tuning</a>
+        <a href="operations.html">Operations Guide</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 ChronoSeal Project. Built with 🦀 Rust and ❤️ for open source.</p>
+    </div>
+  </footer>
+
+  <!-- Search Overlay -->
+  <div class="search-overlay">
+    <div class="search-box">
+      <div class="search-input-wrap">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        <input type="text" class="search-input" placeholder="Search documentation... (Esc to close)">
+        <span class="search-kbd">/</span>
+      </div>
+      <div class="search-results"></div>
+    </div>
+  </div>
+
+  <!-- Back to top -->
+  <a href="#" class="back-to-top" aria-label="Back to top">▲</a>
+
+  <!-- JS Scripts -->
+  <script src="js/search.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

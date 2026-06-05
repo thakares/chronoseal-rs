@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Protocol Specification | ChronoSeal Documentation</title>
+  <meta name="description" content="ChronoSeal cryptographic wire protocol specifications, state transition mechanics, VM instruction opcodes, and stability guidelines.">
+  <link rel="stylesheet" href="css/chronoseal.css">
+  <link rel="stylesheet" href="css/docs.css">
+  <link rel="stylesheet" href="css/print.css" media="print">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  
+  <!-- Font Awesome for Icons -->
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" 
+        integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" 
+        crossorigin="anonymous" 
+        referrerpolicy="no-referrer" />
+</head>
+<body>
+
+  <!-- Floating Background Spheres -->
+  <div class="bg-animation">
+    <div class="gradient-sphere sphere-1"></div>
+    <div class="gradient-sphere sphere-2"></div>
+    <div class="gradient-sphere sphere-3"></div>
+  </div>
+
+  <!-- Header / Navbar -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="logo">
+        <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo">
+        <span>ChronoSeal</span>
+      </a>
+      <div class="nav-links" id="navLinks">
+        <a href="philosophy.html">Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html" class="active">Protocol</a>
+        <a href="comparison.html">Comparison</a>
+        <div class="nav-dropdown">
+          <a href="#" class="nav-link">More <small>▼</small></a>
+          <div class="nav-dropdown-menu">
+            <a href="api.html">API Reference</a>
+            <a href="deployment.html">Deployment Guide</a>
+            <a href="operations.html">Operations Guide</a>
+            <a href="testing.html">Testing Strategy</a>
+            <a href="performance.html">Performance Tuning</a>
+            <a href="threat-model.html">Threat Model</a>
+            <a href="security.html">Security Policy</a>
+            <a href="privacy.html">Privacy Policy</a>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-icon search-trigger" aria-label="Search" onclick="ChronoSearch.open()">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        </button>
+        <a href="https://github.com/thakares/chronoseal-rs" class="github-btn" target="_blank" rel="noopener">
+          <i class="fab fa-github"></i> GitHub
+        </a>
+      </div>
+      <button class="nav-toggle" id="menuBtn" aria-label="Toggle Navigation">
+        <i class="fas fa-bars"></i>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Doc Page Shell -->
+  <div class="doc-page">
+    <div class="doc-layout">
+      
+      <!-- Sidebar -->
+      <aside class="doc-sidebar">
+        <button class="doc-sidebar-toggle">
+          <i class="fas fa-bars"></i> Sidebar Menu
+        </button>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Core Concepts</div>
+          <a href="philosophy.html" class="doc-nav-item">Design Philosophy</a>
+          <a href="architecture.html" class="doc-nav-item">Architecture Overview</a>
+          <a href="comparison.html" class="doc-nav-item">ChronoSeal vs Others</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Protocol &amp; API</div>
+          <a href="protocol.html" class="doc-nav-item active">Protocol Specification</a>
+          <a href="api.html" class="doc-nav-item">API Reference</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Operations &amp; Security</div>
+          <a href="threat-model.html" class="doc-nav-item">Threat Model</a>
+          <a href="security.html" class="doc-nav-item">Security Policy</a>
+          <a href="privacy.html" class="doc-nav-item">Privacy Policy</a>
+          <a href="performance.html" class="doc-nav-item">Performance Tuning</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Lifecycle &amp; Dev</div>
+          <a href="deployment.html" class="doc-nav-item">Deployment Guide</a>
+          <a href="operations.html" class="doc-nav-item">Operations Handbook</a>
+          <a href="testing.html" class="doc-nav-item">Testing Strategy</a>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="doc-main">
+        <nav class="doc-breadcrumb" aria-label="Breadcrumb">
+          <a href="index.html">Home</a>
+          <span class="sep">/</span>
+          <a href="#">Protocol &amp; API</a>
+          <span class="sep">/</span>
+          <span>Protocol Specification</span>
+        </nav>
+        
+        <article class="doc-content">
+          <h1>ChronoSeal Protocol Specification</h1>
+          <p class="doc-subtitle">This document defines the formal wire protocol, state transitions, cryptographic primitives, and execution invariants of the ChronoSeal attestation system.</p>
+          
+          <hr>
+
+          <h2>Sequence Flow</h2>
+          <p>ChronoSeal operates as a stateful, sequential challenge-response sequence over HTTP/REST between the client browser (WASM/JS) and the native server daemon:</p>
+          
+          <!-- Inline Protocol Flow Container -->
+          <div id="diagram-protocol" class="arch-diagram" style="margin-top:24px"></div>
+
+          <h2>Cryptographic Transitions</h2>
+          
+          <h3>1. Handshake Phase (<code>/init</code>)</h3>
+          <p>The client registers a 32-byte Ed25519 verifying key represented as a hex string. The server then performs the following steps:</p>
+          <ol>
+            <li>Generates a 32-byte session ID (<code>session_id</code>) and a 16-byte initial salt (<code>S_0</code>).</li>
+            <li>Computes the initial hash chain head:<br>
+              <code>H_0 = Blake3(session_id || public_key || S_0)</code>
+            </li>
+            <li>Generates a randomized VM program (between 8 and 16 bytes of opcodes).</li>
+            <li>Creates the initial mutation order program <code>M_1</code>.</li>
+            <li>Persists the initial session record.</li>
+          </ol>
+
+          <h3>2. Heartbeat Progression (<code>/hb</code>)</h3>
+          <p>For each heartbeat step <code>n &gt;= 1</code>, the client submits:
+            <code>prev_hash</code> (H_n-1), <code>timestamp</code>, <code>entropy_data</code>, <code>stack_state</code> (VM stack + instruction pointer), <code>gene_commitment</code>, and the <code>signature</code>.
+          </p>
+          <p>The server receives the request and executes these validations:</p>
+          <ol>
+            <li>Loads the session record from storage, enforcing an optimistic concurrency lock (CAS) to confirm that the database <code>last_hash</code> matches the request <code>prev_hash</code>.</li>
+            <li>Validates the Ed25519 signature against the canonical alphabetical serialization.</li>
+            <li>Re-executes the session's VM opcodes and asserts the client's VM <code>stack_state</code> matches the output.</li>
+            <li>Applies the mutation order <code>M_n</code> to the stored gene buffer, computes the expected commitment:<br>
+              <code>C_n = Blake3(CandidateGene || session_id || n)</code><br>
+              Asserts the client's <code>gene_commitment</code> matches.
+            </li>
+            <li>Validates clock alignment: <code>|timestamp_server - timestamp_client| &lt;= max_drift</code>.</li>
+            <li>Advances the cryptographic hash chain head:<br>
+              <code>H_n = Blake3(H_n-1 || timestamp || Blake3(entropy_data) || Blake3(S_n) || S_n-1)</code>
+            </li>
+            <li>Rotates the salt to <code>S_n</code> and compiles the next mutation program <code>M_n+1</code>.</li>
+          </ol>
+
+          <h2>VM Instruction Specification</h2>
+          <p>The browser VM executes opcodes sequentially on a 32-bit unsigned integer stack. The supported instruction set consists of:</p>
+          <ul>
+            <li><code>0x00</code>: Pushes the next 4 bytes in the opcode stream onto the stack as a <code>u32</code> (little-endian).</li>
+            <li><code>0x01</code>: Wrapping Add (<code>a.wrapping_add(b)</code>). Requires at least 2 stack elements.</li>
+            <li><code>0x02</code>: Wrapping Sub (<code>a.wrapping_sub(b)</code>). Requires at least 2 stack elements.</li>
+            <li><code>0x03</code>: Wrapping Mul (<code>a.wrapping_mul(b)</code>). Requires at least 2 stack elements.</li>
+            <li><code>0x04</code>: Bitwise XOR (<code>a ^ b</code>). Requires at least 2 stack elements.</li>
+            <li><code>0x05</code>: Bitwise AND (<code>a &amp; b</code>). Requires at least 2 stack elements.</li>
+            <li><code>0x06</code>: Bitwise OR (<code>a | b</code>). Requires at least 2 stack elements.</li>
+            <li><code>0x07</code>: Rotate Left (<code>a.rotate_left(b % 32)</code>). Requires at least 2 stack elements.</li>
+            <li><code>0x08</code>: Unary Bitwise NOT (<code>!a</code>). Requires at least 1 stack element.</li>
+            <li><code>0x09</code>: Hash Stack. Hashes all stack elements using BLAKE3 and reduces it to a single <code>u32</code> value, clearing the stack and pushing the result.</li>
+            <li><em>Any other opcode:</em> Terminates VM execution immediately.</li>
+          </ul>
+
+          <h2>Protocol Stability Policy</h2>
+          <p>The public surface of ChronoSeal is frozen at version 1.0. This includes:</p>
+          <ul>
+            <li><strong>Wire API:</strong> The JSON schemas and routes of <code>POST /init</code> and <code>POST /hb</code>.</li>
+            <li><strong>State Transition:</strong> Hash chain folding, VM opcodes, and gene mutation mechanics.</li>
+            <li><strong>CLI &amp; Config:</strong> Daemon commands and TOML configuration keys.</li>
+          </ul>
+          <p>Internal details are subject to change without notice. Integrations must not depend on database schemas, Valkey key structures, or internal Rust SDK APIs.</p>
+        </article>
+
+        <!-- Pager -->
+        <nav class="doc-pager" aria-label="Doc navigation Pager">
+          <a href="architecture.html" class="doc-pager-link">
+            <div class="doc-pager-label">Previous</div>
+            <div class="doc-pager-title">Architecture Overview</div>
+          </a>
+          <a href="api.html" class="doc-pager-link doc-pager-link--next">
+            <div class="doc-pager-label">Next</div>
+            <div class="doc-pager-title">API Reference</div>
+          </a>
+        </nav>
+
+        <div class="doc-meta">
+          Last Updated: June 2026 (v1.0.2)
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-section">
+        <h4>
+          <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo" style="width: 24px; height: 24px; vertical-align: middle;"> ChronoSeal
+        </h4>
+        <p>Next-generation browser attestation daemon built for the modern web.</p>
+      </div>
+      <div class="footer-section">
+        <h4>Resources</h4>
+        <a href="philosophy.html">Design Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html">Protocol</a>
+        <a href="api.html">API Reference</a>
+        <a href="comparison.html">Comparison</a>
+      </div>
+      <div class="footer-section">
+        <h4>Community</h4>
+        <a href="https://github.com/thakares/chronoseal-rs" target="_blank" rel="noopener"><i class="fab fa-github"></i> GitHub</a>
+        <a href="deployment.html"><i class="fas fa-rocket"></i> Deployment</a>
+        <a href="testing.html"><i class="fas fa-vial"></i> Testing</a>
+      </div>
+      <div class="footer-section">
+        <h4>Legal &amp; Security</h4>
+        <a href="security.html">Security Policy</a>
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="performance.html">Performance Tuning</a>
+        <a href="operations.html">Operations Guide</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 ChronoSeal Project. Built with 🦀 Rust and ❤️ for open source.</p>
+    </div>
+  </footer>
+
+  <!-- Search Overlay -->
+  <div class="search-overlay">
+    <div class="search-box">
+      <div class="search-input-wrap">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        <input type="text" class="search-input" placeholder="Search documentation... (Esc to close)">
+        <span class="search-kbd">/</span>
+      </div>
+      <div class="search-results"></div>
+    </div>
+  </div>
+
+  <!-- Back to top -->
+  <a href="#" class="back-to-top" aria-label="Back to top">▲</a>
+
+  <!-- JS Scripts -->
+  <script src="js/search.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/diagrams.js"></script>
+</body>
+</html>

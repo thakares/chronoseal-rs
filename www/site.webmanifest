@@ -1,0 +1,25 @@
+{
+  "name": "ChronoSeal",
+  "short_name": "ChronoSeal",
+  "description": "Unix-native cryptographic attestation daemon for browser session continuity",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#0d0f14",
+  "theme_color": "#0a0c10",
+  "orientation": "portrait-primary",
+  "categories": ["developer", "security", "utilities"],
+  "icons": [
+    {
+      "src": "/assets/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

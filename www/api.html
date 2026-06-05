@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>API Reference | ChronoSeal Documentation</title>
+  <meta name="description" content="ChronoSeal HTTP API Reference, documenting endpoints, JSON request-response shapes, and WASM exports.">
+  <link rel="stylesheet" href="css/chronoseal.css">
+  <link rel="stylesheet" href="css/docs.css">
+  <link rel="stylesheet" href="css/print.css" media="print">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  
+  <!-- Font Awesome for Icons -->
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" 
+        integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" 
+        crossorigin="anonymous" 
+        referrerpolicy="no-referrer" />
+</head>
+<body>
+
+  <!-- Floating Background Spheres -->
+  <div class="bg-animation">
+    <div class="gradient-sphere sphere-1"></div>
+    <div class="gradient-sphere sphere-2"></div>
+    <div class="gradient-sphere sphere-3"></div>
+  </div>
+
+  <!-- Header / Navbar -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="logo">
+        <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo">
+        <span>ChronoSeal</span>
+      </a>
+      <div class="nav-links" id="navLinks">
+        <a href="philosophy.html">Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html">Protocol</a>
+        <a href="comparison.html">Comparison</a>
+        <div class="nav-dropdown">
+          <a href="#" class="nav-link">More <small>▼</small></a>
+          <div class="nav-dropdown-menu">
+            <a href="api.html" class="active">API Reference</a>
+            <a href="deployment.html">Deployment Guide</a>
+            <a href="operations.html">Operations Guide</a>
+            <a href="testing.html">Testing Strategy</a>
+            <a href="performance.html">Performance Tuning</a>
+            <a href="threat-model.html">Threat Model</a>
+            <a href="security.html">Security Policy</a>
+            <a href="privacy.html">Privacy Policy</a>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-icon search-trigger" aria-label="Search" onclick="ChronoSearch.open()">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        </button>
+        <a href="https://github.com/thakares/chronoseal-rs" class="github-btn" target="_blank" rel="noopener">
+          <i class="fab fa-github"></i> GitHub
+        </a>
+      </div>
+      <button class="nav-toggle" id="menuBtn" aria-label="Toggle Navigation">
+        <i class="fas fa-bars"></i>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Doc Page Shell -->
+  <div class="doc-page">
+    <div class="doc-layout">
+      
+      <!-- Sidebar -->
+      <aside class="doc-sidebar">
+        <button class="doc-sidebar-toggle">
+          <i class="fas fa-bars"></i> Sidebar Menu
+        </button>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Core Concepts</div>
+          <a href="philosophy.html" class="doc-nav-item">Design Philosophy</a>
+          <a href="architecture.html" class="doc-nav-item">Architecture Overview</a>
+          <a href="comparison.html" class="doc-nav-item">ChronoSeal vs Others</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Protocol &amp; API</div>
+          <a href="protocol.html" class="doc-nav-item">Protocol Specification</a>
+          <a href="api.html" class="doc-nav-item active">API Reference</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Operations &amp; Security</div>
+          <a href="threat-model.html" class="doc-nav-item">Threat Model</a>
+          <a href="security.html" class="doc-nav-item">Security Policy</a>
+          <a href="privacy.html" class="doc-nav-item">Privacy Policy</a>
+          <a href="performance.html" class="doc-nav-item">Performance Tuning</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Lifecycle &amp; Dev</div>
+          <a href="deployment.html" class="doc-nav-item">Deployment Guide</a>
+          <a href="operations.html" class="doc-nav-item">Operations Handbook</a>
+          <a href="testing.html" class="doc-nav-item">Testing Strategy</a>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="doc-main">
+        <nav class="doc-breadcrumb" aria-label="Breadcrumb">
+          <a href="index.html">Home</a>
+          <span class="sep">/</span>
+          <a href="#">Protocol &amp; API</a>
+          <span class="sep">/</span>
+          <span>API Reference</span>
+        </nav>
+        
+        <article class="doc-content">
+          <h1>ChronoSeal API Reference</h1>
+          <p class="doc-subtitle">ChronoSeal exposes a lightweight HTTP API for session handshakes, heartbeat attestation verification, metrics, and statistics.</p>
+          
+          <hr>
+
+          <h2>Endpoint Summary</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Method</th>
+                <th>Path</th>
+                <th>Core Purpose</th>
+                <th>Content Type</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>POST</code></td>
+                <td><code>/init</code></td>
+                <td>Create a new attestation session</td>
+                <td><code>application/json</code></td>
+              </tr>
+              <tr>
+                <td><code>POST</code></td>
+                <td><code>/hb</code></td>
+                <td>Submit and verify a signed heartbeat</td>
+                <td><code>application/json</code></td>
+              </tr>
+              <tr>
+                <td><code>GET</code></td>
+                <td><code>/health</code></td>
+                <td>Check daemon operational health</td>
+                <td><code>application/json</code></td>
+              </tr>
+              <tr>
+                <td><code>GET</code></td>
+                <td><code>/stats</code></td>
+                <td>Get runtime database statistics</td>
+                <td><code>application/json</code></td>
+              </tr>
+              <tr>
+                <td><code>GET</code></td>
+                <td><code>/metrics</code></td>
+                <td>Prometheus-compatible scraping metrics</td>
+                <td><code>text/plain</code></td>
+              </tr>
+              <tr>
+                <td><code>GET</code></td>
+                <td><code>/</code></td>
+                <td>Serve static integration files</td>
+                <td>HTML / JS / WASM</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h2>Data Encoding Formats</h2>
+          <ul>
+            <li><strong>Keys &amp; Signatures:</strong> Ed25519 public keys represent 64 hex characters (32 bytes). Signatures represent 128 hex characters (64 bytes).</li>
+            <li><strong>Hashes:</strong> Blake3 digests represent 64 hex characters (32 bytes).</li>
+            <li><strong>Salts:</strong> Random seeds represented as 32 hex characters (16 bytes).</li>
+            <li><strong>Timestamps:</strong> Integer epoch milliseconds.</li>
+            <li><strong>Programs:</strong> Base64-encoded strings (representing VM opcodes or mutation steps).</li>
+          </ul>
+
+          <h2><code>POST /init</code></h2>
+          <p>Registers the browser public key and initiates the session tracker.</p>
+          
+          <h3>Request Payload</h3>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">JSON Request</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>{
+  "public_key": "24a1b0cd982fecba45...64 hex chars"
+}</code></pre>
+          </div>
+
+          <h3>Successful Response (200 OK)</h3>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">JSON Response</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>{
+  "session_id": "8902abc345def678...64 hex chars",
+  "salt": "f51278ba...32 hex chars",
+  "opcodes_b64": "AQAFAwEG...",
+  "initial_hash": "23ab89c0...64 hex chars",
+  "expires_at": 1782390482000,
+  "heartbeat_min_interval_ms": 12000,
+  "heartbeat_max_interval_ms": 25000,
+  "gene_size": 512,
+  "mutation_step": 1,
+  "mutation_order_b64": "YWJjZGVm..."
+}</code></pre>
+          </div>
+
+          <h2><code>POST /hb</code></h2>
+          <p>Verifies client compliance for the current step and rolls over session parameters.</p>
+
+          <h3>Request Payload</h3>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">JSON Request</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>{
+  "session_id": "8902abc345def678...64 hex chars",
+  "prev_hash": "23ab89c0...64 hex chars",
+  "timestamp": 1782390494000,
+  "entropy_data": {
+    "events": [
+      { "x": 124.5, "y": 308.2, "t": 120.4 }
+    ]
+  },
+  "stack_state": {
+    "stack": [108429, 3902],
+    "ip": 12
+  },
+  "fingerprint": {
+    "aspectRatio": "1.7777777778",
+    "devicePixelRatio": "2",
+    "hardwareConcurrency": 8
+  },
+  "mutation_step": 1,
+  "gene_commitment": "56ab12cd...64 hex chars",
+  "signature": "ab0921cd56ef...128 hex chars"
+}</code></pre>
+          </div>
+
+          <h3>Accepted Response</h3>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">JSON Response</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>{
+  "status": "ok",
+  "next_salt": "78abef90...32 hex chars",
+  "next_mutation_step": 2,
+  "next_mutation_order_b64": "cGFzc3dvcmQ..."
+}</code></pre>
+          </div>
+
+          <h3>Rejected Response (Silent Rejection)</h3>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">JSON Response</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>{
+  "status": "ok"
+}</code></pre>
+          </div>
+
+          <div class="doc-alert doc-alert--warn">
+            <div class="doc-alert-icon">⚠️</div>
+            <div class="doc-alert-body">
+              <strong>Important:</strong> Heartbeat rejections return <code>200 OK</code> with <code>status: ok</code> but OMIT next-state fields. Clients must check for the presence of <code>next_salt</code> before advancing local states.
+            </div>
+          </div>
+
+          <h2>Canonical Signing Payload</h2>
+          <p>The Ed25519 signature covers a canonical JSON string. The server orders the keys alphabetically using camelCase notation. Ensure serialization matches this format precisely:</p>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">JSON Payload</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>{
+  "entropyData": { "events": [{ "t": 120.4, "x": 124.5, "y": 308.2 }] },
+  "fingerprint": { "aspectRatio": "1.7777777778", "devicePixelRatio": "2", "hardwareConcurrency": 8 },
+  "geneCommitment": "56ab12cd...",
+  "mutationStep": 1,
+  "prevHash": "23ab89c0...",
+  "sessionId": "8902abc3...",
+  "stackState": { "ip": 12, "stack": [108429, 3902] },
+  "timestamp": 1782390494000
+}</code></pre>
+          </div>
+
+          <h2>Operational Probes</h2>
+
+          <h3><code>GET /health</code></h3>
+          <div class="code-block">
+            <pre><code>{
+  "status": "healthy"
+}</code></pre>
+          </div>
+
+          <h3><code>GET /stats</code></h3>
+          <div class="code-block">
+            <pre><code>{
+  "sessions": 412,
+  "expired_sessions": 3,
+  "max_chain_length": 84
+}</code></pre>
+          </div>
+
+          <h3><code>GET /metrics</code></h3>
+          <div class="code-block">
+            <pre><code># HELP chronoseal_sessions Active ChronoSeal sessions
+# TYPE chronoseal_sessions gauge
+chronoseal_sessions 412
+# HELP chronoseal_expired_sessions Expired sessions not yet removed
+# TYPE chronoseal_expired_sessions gauge
+chronoseal_expired_sessions 3
+# HELP chronoseal_max_chain_length Maximum heartbeat chain length
+# TYPE chronoseal_max_chain_length gauge
+chronoseal_max_chain_length 84</code></pre>
+          </div>
+        </article>
+
+        <!-- Pager -->
+        <nav class="doc-pager" aria-label="Doc navigation Pager">
+          <a href="protocol.html" class="doc-pager-link">
+            <div class="doc-pager-label">Previous</div>
+            <div class="doc-pager-title">Protocol Specification</div>
+          </a>
+          <a href="threat-model.html" class="doc-pager-link doc-pager-link--next">
+            <div class="doc-pager-label">Next</div>
+            <div class="doc-pager-title">Threat Model</div>
+          </a>
+        </nav>
+
+        <div class="doc-meta">
+          Last Updated: June 2026 (v1.0.2)
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-section">
+        <h4>
+          <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo" style="width: 24px; height: 24px; vertical-align: middle;"> ChronoSeal
+        </h4>
+        <p>Next-generation browser attestation daemon built for the modern web.</p>
+      </div>
+      <div class="footer-section">
+        <h4>Resources</h4>
+        <a href="philosophy.html">Design Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html">Protocol</a>
+        <a href="api.html">API Reference</a>
+        <a href="comparison.html">Comparison</a>
+      </div>
+      <div class="footer-section">
+        <h4>Community</h4>
+        <a href="https://github.com/thakares/chronoseal-rs" target="_blank" rel="noopener"><i class="fab fa-github"></i> GitHub</a>
+        <a href="deployment.html"><i class="fas fa-rocket"></i> Deployment</a>
+        <a href="testing.html"><i class="fas fa-vial"></i> Testing</a>
+      </div>
+      <div class="footer-section">
+        <h4>Legal &amp; Security</h4>
+        <a href="security.html">Security Policy</a>
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="performance.html">Performance Tuning</a>
+        <a href="operations.html">Operations Guide</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 ChronoSeal Project. Built with 🦀 Rust and ❤️ for open source.</p>
+    </div>
+  </footer>
+
+  <!-- Search Overlay -->
+  <div class="search-overlay">
+    <div class="search-box">
+      <div class="search-input-wrap">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        <input type="text" class="search-input" placeholder="Search documentation... (Esc to close)">
+        <span class="search-kbd">/</span>
+      </div>
+      <div class="search-results"></div>
+    </div>
+  </div>
+
+  <!-- Back to top -->
+  <a href="#" class="back-to-top" aria-label="Back to top">▲</a>
+
+  <!-- JS Scripts -->
+  <script src="js/search.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

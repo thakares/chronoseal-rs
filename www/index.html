@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>ChronoSeal | Browser Attestation Daemon</title>
+  <meta name="description" content="ChronoSeal is a Unix-native browser attestation daemon combining cryptographic signatures, deterministic state machines, and a synthetic gene mutation engine for session integrity.">
+  <link rel="stylesheet" href="css/chronoseal.css">
+  <link rel="stylesheet" href="css/print.css" media="print">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  
+  <!-- Font Awesome for Icons -->
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" 
+        integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" 
+        crossorigin="anonymous" 
+        referrerpolicy="no-referrer" />
+</head>
+<body>
+
+  <!-- Floating Background Spheres -->
+  <div class="bg-animation">
+    <div class="gradient-sphere sphere-1"></div>
+    <div class="gradient-sphere sphere-2"></div>
+    <div class="gradient-sphere sphere-3"></div>
+  </div>
+
+  <!-- Header / Navbar -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="logo">
+        <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo">
+        <span>ChronoSeal</span>
+      </a>
+      <div class="nav-links" id="navLinks">
+        <a href="philosophy.html">Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html">Protocol</a>
+        <a href="comparison.html">Comparison</a>
+        <div class="nav-dropdown">
+          <a href="#" class="nav-link">More <small>▼</small></a>
+          <div class="nav-dropdown-menu">
+            <a href="api.html">API Reference</a>
+            <a href="deployment.html">Deployment Guide</a>
+            <a href="operations.html">Operations Guide</a>
+            <a href="testing.html">Testing Strategy</a>
+            <a href="performance.html">Performance Tuning</a>
+            <a href="threat-model.html">Threat Model</a>
+            <a href="security.html">Security Policy</a>
+            <a href="privacy.html">Privacy Policy</a>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-icon search-trigger" aria-label="Search" onclick="ChronoSearch.open()">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        </button>
+        <a href="https://github.com/thakares/chronoseal-rs" class="github-btn" target="_blank" rel="noopener">
+          <i class="fab fa-github"></i> GitHub
+        </a>
+      </div>
+      <button class="nav-toggle" id="menuBtn" aria-label="Toggle Navigation">
+        <i class="fas fa-bars"></i>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    
+    <!-- Hero Section -->
+    <section id="home" class="hero animate">
+      <div class="hero-badge">
+        <i class="fas fa-code-branch"></i> v1.0.2 · Production Hardened
+      </div>
+      <h1>Browser Attestation<br>Reimagined</h1>
+      <p class="hero-subtitle">
+        ChronoSeal is a Unix-native browser attestation daemon combining cryptographic signatures, 
+        deterministic state machines, and a synthetic gene mutation engine for unparalleled session integrity.
+      </p>
+      <div class="hero-buttons">
+        <a href="deployment.html" class="btn btn-primary">
+          <i class="fas fa-terminal"></i> Get Started
+        </a>
+        <a href="https://github.com/thakares/chronoseal-rs" class="btn btn-secondary" target="_blank" rel="noopener">
+          <i class="fab fa-github"></i> View on GitHub
+        </a>
+      </div>
+    </section>
+
+    <!-- Stats Grid -->
+    <div class="stats-grid animate">
+      <div class="stat-card">
+        <div class="stat-number">100</div>
+        <div class="stat-label">Tests Passing</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">3</div>
+        <div class="stat-label">Storage Backends</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">10</div>
+        <div class="stat-label">VM Opcodes</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-number">30s</div>
+        <div class="stat-label">Max Drift</div>
+      </div>
+    </div>
+
+    <!-- Core Features Section -->
+    <section id="features" class="section animate">
+      <div class="section-header">
+        <h2>Core Features</h2>
+        <p>Everything you need for robust, enterprise-grade browser attestation</p>
+      </div>
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-icon"><i class="fas fa-dna"></i></div>
+          <h3>Synthetic Gene Engine</h3>
+          <p>Deterministic mutation sequence that both server and browser WASM must execute in sync—creating an unprecedented second state channel.</p>
+          <div class="card-tags">
+            <span class="tag">Mutation Rounds</span>
+            <span class="tag">Gene Size 512-4096</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i class="fas fa-link"></i></div>
+          <h3>Cryptographic Chain</h3>
+          <p>Ed25519 signatures and a Blake3 hash chain progression with rotating salts ensures replay resistance and continuity verification.</p>
+          <div class="card-tags">
+            <span class="tag">Ed25519</span>
+            <span class="tag">Blake3</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i class="fas fa-microchip"></i></div>
+          <h3>Deterministic VM</h3>
+          <p>A lightweight 10-opcode virtual machine executing server-issued programs with exact stack state verification between client and server.</p>
+          <div class="card-tags">
+            <span class="tag">Stack Verification</span>
+            <span class="tag">Custom Instruction Set</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i class="fas fa-user-secret"></i></div>
+          <h3>Silent Rejection</h3>
+          <p>Failed heartbeats return identical HTTP 200 responses—providing zero oracle feedback and making automated probing impossible.</p>
+          <div class="card-tags">
+            <span class="tag">No Oracle</span>
+            <span class="tag">Security First</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i class="fas fa-database"></i></div>
+          <h3>Pluggable Storage</h3>
+          <p>Use SQLite in-memory for testing, SQLite disk for standalone, or Valkey/Redis for massive distributed cluster deployments.</p>
+          <div class="card-tags">
+            <span class="tag">SQLite</span>
+            <span class="tag">Valkey/Redis</span>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i class="fas fa-server"></i></div>
+          <h3>Production Ready</h3>
+          <p>Built-in Prometheus metrics, liveness/readiness probes, structured logging, systemd integration, and graceful shutdown.</p>
+          <div class="card-tags">
+            <span class="tag">Prometheus</span>
+            <span class="tag">Observability</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Architecture Section -->
+    <section id="architecture-sec" class="section animate">
+      <div class="section-header">
+        <h2>System Architecture</h2>
+        <p>A look inside how ChronoSeal protects your sessions in real-time</p>
+      </div>
+      <div class="architecture-container">
+        <!-- Inline diagram container dynamically drawn by diagrams.js -->
+        <div id="diagram-architecture" class="arch-diagram"></div>
+      </div>
+      <div class="text-center" style="margin-top:24px">
+        <a href="architecture.html" class="btn btn-secondary btn-sm">Read Architecture Docs</a>
+      </div>
+    </section>
+
+    <!-- Protocol Section -->
+    <section id="protocol-sec" class="section animate">
+      <div class="section-header">
+        <h2>Protocol Flow</h2>
+        <p>Secure handshake and continuous background verification</p>
+      </div>
+      <div class="code-block code-block-center">
+        <div class="code-header">
+          <span class="code-lang">Sequence Flow Diagram</span>
+          <button class="code-copy-btn">Copy</button>
+        </div>
+        <pre><code>┌─────────────┐                                    ┌─────────────┐
+│   Browser   │                                    │   Server    │
+│   (WASM)    │                                    │ (ChronoSeal)│
+└──────┬──────┘                                    └──────┬──────┘
+       │                                                  │
+       │ POST /init { public_key }                        │
+       │─────────────────────────────────────────────────>│
+       │                                                  │
+       │ 200 { session_id, salt, opcodes,                 │
+       │       initial_hash, mutation_order }             │
+       │<─────────────────────────────────────────────────│
+       │                                                  │
+       │ [Execute VM, Preview Mutation]                   │
+       │                                                  │
+       │ POST /hb { prev_hash, timestamp, entropy,        │
+       │          stack_state, gene_commitment,           │
+       │          signature }                             │
+       │─────────────────────────────────────────────────>│
+       │                                                  │
+       │ [Verify: Signature → Hash → Mutation → Drift]    │
+       │                                                  │
+       │ 200 { status: "ok", next_salt,                   │
+       │      next_mutation_step, next_order }            │
+       │<─────────────────────────────────────────────────│
+       │                                                  │
+       │ [Commit Preview, Rotate State]                   │
+       │                                                  │
+       ▼                                                  ▼</code></pre>
+      </div>
+      <div class="text-center" style="margin-top:24px">
+        <a href="protocol.html" class="btn btn-secondary btn-sm">Read Protocol Docs</a>
+      </div>
+    </section>
+
+    <!-- Comparison Section -->
+    <section id="comparison-sec" class="section animate">
+      <div class="section-header">
+        <h2>vs Popular Solutions</h2>
+        <p>Why modern privacy-conscious teams choose ChronoSeal</p>
+      </div>
+      <div class="comparison-table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th>ChronoSeal</th>
+              <th>Cloudflare Turnstile</th>
+              <th>reCAPTCHA v3</th>
+              <th>Enterprise WAFs</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Self-hosted &amp; Air-gapped</td>
+              <td class="check"><i class="fas fa-check-circle"></i> Yes</td>
+              <td class="times"><i class="fas fa-times-circle"></i> No</td>
+              <td class="times"><i class="fas fa-times-circle"></i> No</td>
+              <td class="times"><i class="fas fa-times-circle"></i> No</td>
+            </tr>
+            <tr>
+              <td>Privacy Focused</td>
+              <td class="check"><i class="fas fa-check-circle"></i> Excellent</td>
+              <td class="times"><i class="fas fa-times-circle"></i> Medium</td>
+              <td class="times"><i class="fas fa-times-circle"></i> Poor</td>
+              <td class="times"><i class="fas fa-times-circle"></i> Low</td>
+            </tr>
+            <tr>
+              <td>Cryptographic Continuity</td>
+              <td class="check"><i class="fas fa-check-circle"></i> Very High</td>
+              <td class="times"><i class="fas fa-times-circle"></i> Medium</td>
+              <td class="times"><i class="fas fa-times-circle"></i> Low</td>
+              <td class="times"><i class="fas fa-times-circle"></i> Medium</td>
+            </tr>
+            <tr>
+              <td>Cost Structure</td>
+              <td class="check"><i class="fas fa-check-circle"></i> Free (FOSS)</td>
+              <td class="times"><i class="fas fa-times-circle"></i> Freemium</td>
+              <td class="times"><i class="fas fa-times-circle"></i> Free → Paid</td>
+              <td class="times"><i class="fas fa-times-circle"></i> Extremely High</td>
+            </tr>
+            <tr>
+              <td>WASM Mutation Engine</td>
+              <td class="check"><i class="fas fa-check-circle"></i> Unique</td>
+              <td class="times"><i class="fas fa-times-circle"></i> No</td>
+              <td class="times"><i class="fas fa-times-circle"></i> No</td>
+              <td class="times"><i class="fas fa-times-circle"></i> No</td>
+            </tr>
+            <tr>
+              <td>Silent Rejection Architecture</td>
+              <td class="check"><i class="fas fa-check-circle"></i> Yes</td>
+              <td class="times"><i class="fas fa-times-circle"></i> No</td>
+              <td class="times"><i class="fas fa-times-circle"></i> No</td>
+              <td class="times"><i class="fas fa-times-circle"></i> No</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="text-center" style="margin-top:24px">
+        <a href="comparison.html" class="btn btn-secondary btn-sm">Detailed Comparison</a>
+      </div>
+    </section>
+
+    <!-- Quick Deployment Section -->
+    <section id="deployment-sec" class="section animate">
+      <div class="section-header">
+        <h2>Quick Deployment</h2>
+        <p>Spin up the daemon in under a minute</p>
+      </div>
+      <div class="cards-grid">
+        <div class="card">
+          <div class="card-icon"><i class="fab fa-docker"></i></div>
+          <h3>Docker</h3>
+          <div class="code-block" style="margin-top: 1rem; border: none; padding: 1rem; background: rgba(0,0,0,0.3);">
+            <pre><code>docker run -d -p 3000:3000 \
+  chronoseal/chronoseal:latest</code></pre>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i class="fas fa-cubes"></i></div>
+          <h3>Docker Compose</h3>
+          <div class="code-block" style="margin-top: 1rem; border: none; padding: 1rem; background: rgba(0,0,0,0.3);">
+            <pre><code>bash scripts/build.sh
+docker compose up -d --build</code></pre>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i class="fab fa-linux"></i></div>
+          <h3>Native (systemd)</h3>
+          <div class="code-block" style="margin-top: 1rem; border: none; padding: 1rem; background: rgba(0,0,0,0.3);">
+            <pre><code>curl -sL https://chronoseal.io/install.sh | sudo bash
+sudo systemctl enable --now chronoseal</code></pre>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i class="fas fa-terminal"></i></div>
+          <h3>From Source</h3>
+          <div class="code-block" style="margin-top: 1rem; border: none; padding: 1rem; background: rgba(0,0,0,0.3);">
+            <pre><code>git clone https://github.com/thakares/chronoseal-rs
+cd chronoseal &amp;&amp; cargo run --release</code></pre>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i class="fas fa-network-wired"></i></div>
+          <h3>Nginx Proxy</h3>
+          <div class="code-block" style="margin-top: 1rem; border: none; padding: 1rem; background: rgba(0,0,0,0.3);">
+            <pre><code>location / {
+  proxy_pass http://127.0.0.1:3000;
+  proxy_http_version 1.1;
+}</code></pre>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-icon"><i class="fas fa-heartbeat"></i></div>
+          <h3>Verification</h3>
+          <div class="code-block" style="margin-top: 1rem; border: none; padding: 1rem; background: rgba(0,0,0,0.3);">
+            <pre><code># Check daemon health status
+curl http://localhost:3000/health
+
+# Query daemon CLI metrics
+chronoseal status --format json</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-section">
+        <h4>
+          <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo" style="width: 24px; height: 24px; vertical-align: middle;"> ChronoSeal
+        </h4>
+        <p>Next-generation browser attestation daemon built for the modern web.</p>
+      </div>
+      <div class="footer-section">
+        <h4>Resources</h4>
+        <a href="philosophy.html">Design Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html">Protocol</a>
+        <a href="api.html">API Reference</a>
+        <a href="comparison.html">Comparison</a>
+      </div>
+      <div class="footer-section">
+        <h4>Community</h4>
+        <a href="https://github.com/thakares/chronoseal-rs" target="_blank" rel="noopener"><i class="fab fa-github"></i> GitHub</a>
+        <a href="deployment.html"><i class="fas fa-rocket"></i> Deployment</a>
+        <a href="testing.html"><i class="fas fa-vial"></i> Testing</a>
+      </div>
+      <div class="footer-section">
+        <h4>Legal &amp; Security</h4>
+        <a href="security.html">Security Policy</a>
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="performance.html">Performance Tuning</a>
+        <a href="operations.html">Operations Guide</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 ChronoSeal Project. Built with 🦀 Rust and ❤️ for open source.</p>
+    </div>
+  </footer>
+
+  <!-- Search Overlay -->
+  <div class="search-overlay">
+    <div class="search-box">
+      <div class="search-input-wrap">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        <input type="text" class="search-input" placeholder="Search documentation... (Esc to close)">
+        <span class="search-kbd">/</span>
+      </div>
+      <div class="search-results"></div>
+    </div>
+  </div>
+
+  <!-- Back to top -->
+  <a href="#" class="back-to-top" aria-label="Back to top">▲</a>
+
+  <!-- JS Scripts -->
+  <script src="js/search.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/pwa.js"></script>
+  <script src="js/diagrams.js"></script>
+</body>
+</html>

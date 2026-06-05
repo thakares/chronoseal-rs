@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Performance Tuning Guide | ChronoSeal Documentation</title>
+  <meta name="description" content="ChronoSeal Performance Tuning Guide, detailing mutation parameters, recommended setups, diagnostic metrics, and optimization profiles.">
+  <link rel="stylesheet" href="css/chronoseal.css">
+  <link rel="stylesheet" href="css/docs.css">
+  <link rel="stylesheet" href="css/print.css" media="print">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  
+  <!-- Font Awesome for Icons -->
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" 
+        integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" 
+        crossorigin="anonymous" 
+        referrerpolicy="no-referrer" />
+</head>
+<body>
+
+  <!-- Floating Background Spheres -->
+  <div class="bg-animation">
+    <div class="gradient-sphere sphere-1"></div>
+    <div class="gradient-sphere sphere-2"></div>
+    <div class="gradient-sphere sphere-3"></div>
+  </div>
+
+  <!-- Header / Navbar -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="logo">
+        <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo">
+        <span>ChronoSeal</span>
+      </a>
+      <div class="nav-links" id="navLinks">
+        <a href="philosophy.html">Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html">Protocol</a>
+        <a href="comparison.html">Comparison</a>
+        <div class="nav-dropdown">
+          <a href="#" class="nav-link">More <small>▼</small></a>
+          <div class="nav-dropdown-menu">
+            <a href="api.html">API Reference</a>
+            <a href="deployment.html">Deployment Guide</a>
+            <a href="operations.html">Operations Guide</a>
+            <a href="testing.html">Testing Strategy</a>
+            <a href="performance.html" class="active">Performance Tuning</a>
+            <a href="threat-model.html">Threat Model</a>
+            <a href="security.html">Security Policy</a>
+            <a href="privacy.html">Privacy Policy</a>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-icon search-trigger" aria-label="Search" onclick="ChronoSearch.open()">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        </button>
+        <a href="https://github.com/thakares/chronoseal-rs" class="github-btn" target="_blank" rel="noopener">
+          <i class="fab fa-github"></i> GitHub
+        </a>
+      </div>
+      <button class="nav-toggle" id="menuBtn" aria-label="Toggle Navigation">
+        <i class="fas fa-bars"></i>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Doc Page Shell -->
+  <div class="doc-page">
+    <div class="doc-layout">
+      
+      <!-- Sidebar -->
+      <aside class="doc-sidebar">
+        <button class="doc-sidebar-toggle">
+          <i class="fas fa-bars"></i> Sidebar Menu
+        </button>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Core Concepts</div>
+          <a href="philosophy.html" class="doc-nav-item">Design Philosophy</a>
+          <a href="architecture.html" class="doc-nav-item">Architecture Overview</a>
+          <a href="comparison.html" class="doc-nav-item">ChronoSeal vs Others</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Protocol &amp; API</div>
+          <a href="protocol.html" class="doc-nav-item">Protocol Specification</a>
+          <a href="api.html" class="doc-nav-item">API Reference</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Operations &amp; Security</div>
+          <a href="threat-model.html" class="doc-nav-item">Threat Model</a>
+          <a href="security.html" class="doc-nav-item">Security Policy</a>
+          <a href="privacy.html" class="doc-nav-item">Privacy Policy</a>
+          <a href="performance.html" class="doc-nav-item active">Performance Tuning</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Lifecycle &amp; Dev</div>
+          <a href="deployment.html" class="doc-nav-item">Deployment Guide</a>
+          <a href="operations.html" class="doc-nav-item">Operations Handbook</a>
+          <a href="testing.html" class="doc-nav-item">Testing Strategy</a>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="doc-main">
+        <nav class="doc-breadcrumb" aria-label="Breadcrumb">
+          <a href="index.html">Home</a>
+          <span class="sep">/</span>
+          <a href="#">Operations &amp; Security</a>
+          <span class="sep">/</span>
+          <span>Performance Tuning</span>
+        </nav>
+        
+        <article class="doc-content">
+          <h1>Performance Tuning Guide</h1>
+          <p class="doc-subtitle">ChronoSeal uses a deterministic Synthetic Gene Mutation Engine. This guide explains how to tune the mutation parameters to balance security, server throughput, and client mobile CPU limits.</p>
+          
+          <hr>
+
+          <h2>Primary Tuning Parameters</h2>
+          <p>Two configuration constants in the ChronoSeal daemon dictate the complexity of synthetic mutation progression:</p>
+          <ul>
+            <li><strong><code>gene_size</code>:</strong> The size of the synthetic gene byte buffer (configured from 1 to 4096 bytes). Larger values increase state vector complexity.</li>
+            <li><strong><code>mutation_rounds</code>:</strong> The number of mutation iterations executed per heartbeat (configured from 1 to 10 rounds). Higher counts increase server and browser CPU operations.</li>
+          </ul>
+
+          <h2>Recommended Profiles</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Profile</th>
+                <th><code>gene_size</code></th>
+                <th><code>mutation_rounds</code></th>
+                <th>Security Strength</th>
+                <th>Recommended Environment</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Default</td>
+                <td>512</td>
+                <td>4</td>
+                <td>Moderate</td>
+                <td>Development and local testing</td>
+              </tr>
+              <tr>
+                <td><strong>Recommended</strong></td>
+                <td><strong>2048</strong></td>
+                <td><strong>4</strong></td>
+                <td><strong>Strong</strong></td>
+                <td><strong>Most production deployments</strong></td>
+              </tr>
+              <tr>
+                <td>High Security</td>
+                <td>4096</td>
+                <td>8</td>
+                <td>Very Strong</td>
+                <td>Sensitive financial or auth APIs</td>
+              </tr>
+              <tr>
+                <td>Max Practical</td>
+                <td>4096</td>
+                <td>10</td>
+                <td>Extremely Strong</td>
+                <td>High-value targets under active abuse</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="doc-alert doc-alert--note">
+            <div class="doc-alert-icon">ℹ️</div>
+            <div class="doc-alert-body">
+              <strong>v1.0.2 Protocol Limits:</strong> The validator enforces maximum bounds of <code>gene_size = 4096</code> and <code>mutation_rounds = 10</code>. Values exceeding these ranges are rejected during configuration verification.
+            </div>
+          </div>
+
+          <h2>Monitoring Performance</h2>
+          
+          <h3>1. Server-Side Observability</h3>
+          <p>Check the effective parameters and database write latencies using the daemon CLI:</p>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">Shell</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>chronoseal config check --format yaml
+chronoseal stats --format json</code></pre>
+          </div>
+          <p>Avoid running the daemon with <code>CHRONOSEAL_LOG=debug</code> in production, as debug logging session buffers degrades server throughput.</p>
+
+          <h3>2. Client-Side Time Measurement</h3>
+          <p>Measure WASM execution time inside your browser console to verify mobile compatibility:</p>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">JavaScript</span>
+              <button class="code-copy-btn">Copy</button>
+            </div>
+            <pre><code>console.time("gene-mutation");
+const commitment = preview_gene_commitment(
+  order_b64,
+  session_id,
+  mutation_step,
+  rounds
+);
+console.timeEnd("gene-mutation");</code></pre>
+          </div>
+
+          <h2>Tuning Progression Strategy</h2>
+          <p>When upgrading mutation strength in production, we recommend a step-by-step approach to monitor mobile battery impact:</p>
+          <ol>
+            <li>Start at our standard baseline: <code>gene_size = 2048</code>, <code>mutation_rounds = 4</code>.</li>
+            <li>Deploy and monitor the heartbeat verification success metrics. Look for increases in client timeouts.</li>
+            <li>Increase state size first (e.g. to <code>4096</code>) before raising the number of execution rounds.</li>
+            <li>Perform testing on older Android/iOS mobile devices. Desktops are highly forgiving of high WASM execution loads; low-end mobile CPUs are not.</li>
+          </ol>
+
+          <h2>Storage Backend Impact</h2>
+          <p>The choice of storage backend has a significant impact on transaction throughput:</p>
+          <ul>
+            <li><strong><code>sqlite-in-memory</code>:</strong> Highest performance, zero write latency. Ideal for ephemeral deployments.</li>
+            <li><strong><code>sqlite-in-disk</code>:</strong> Bounded by disk write capacity and database file locks.</li>
+            <li><strong><code>valkey</code>:</strong> Scales horizontally across multiple stateless daemon instances connecting to a shared Redis/Valkey cluster.</li>
+          </ul>
+        </article>
+
+        <!-- Pager -->
+        <nav class="doc-pager" aria-label="Doc navigation Pager">
+          <a href="threat-model.html" class="doc-pager-link">
+            <div class="doc-pager-label">Previous</div>
+            <div class="doc-pager-title">Threat Model</div>
+          </a>
+          <a href="operations.html" class="doc-pager-link doc-pager-link--next">
+            <div class="doc-pager-label">Next</div>
+            <div class="doc-pager-title">Operations Handbook</div>
+          </a>
+        </nav>
+
+        <div class="doc-meta">
+          Last Updated: June 2026 (v1.0.2)
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-section">
+        <h4>
+          <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo" style="width: 24px; height: 24px; vertical-align: middle;"> ChronoSeal
+        </h4>
+        <p>Next-generation browser attestation daemon built for the modern web.</p>
+      </div>
+      <div class="footer-section">
+        <h4>Resources</h4>
+        <a href="philosophy.html">Design Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html">Protocol</a>
+        <a href="api.html">API Reference</a>
+        <a href="comparison.html">Comparison</a>
+      </div>
+      <div class="footer-section">
+        <h4>Community</h4>
+        <a href="https://github.com/thakares/chronoseal-rs" target="_blank" rel="noopener"><i class="fab fa-github"></i> GitHub</a>
+        <a href="deployment.html"><i class="fas fa-rocket"></i> Deployment</a>
+        <a href="testing.html"><i class="fas fa-vial"></i> Testing</a>
+      </div>
+      <div class="footer-section">
+        <h4>Legal &amp; Security</h4>
+        <a href="security.html">Security Policy</a>
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="performance.html">Performance Tuning</a>
+        <a href="operations.html">Operations Guide</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 ChronoSeal Project. Built with 🦀 Rust and ❤️ for open source.</p>
+    </div>
+  </footer>
+
+  <!-- Search Overlay -->
+  <div class="search-overlay">
+    <div class="search-box">
+      <div class="search-input-wrap">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        <input type="text" class="search-input" placeholder="Search documentation... (Esc to close)">
+        <span class="search-kbd">/</span>
+      </div>
+      <div class="search-results"></div>
+    </div>
+  </div>
+
+  <!-- Back to top -->
+  <a href="#" class="back-to-top" aria-label="Back to top">▲</a>
+
+  <!-- JS Scripts -->
+  <script src="js/search.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

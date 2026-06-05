@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Design Philosophy | ChronoSeal Documentation</title>
+  <meta name="description" content="ChronoSeal design philosophy, engineering priorities, non-goals, and cost-raising anti-automation security biases.">
+  <link rel="stylesheet" href="css/chronoseal.css">
+  <link rel="stylesheet" href="css/docs.css">
+  <link rel="stylesheet" href="css/print.css" media="print">
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+  
+  <!-- Font Awesome for Icons -->
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" 
+        integrity="sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==" 
+        crossorigin="anonymous" 
+        referrerpolicy="no-referrer" />
+</head>
+<body>
+
+  <!-- Floating Background Spheres -->
+  <div class="bg-animation">
+    <div class="gradient-sphere sphere-1"></div>
+    <div class="gradient-sphere sphere-2"></div>
+    <div class="gradient-sphere sphere-3"></div>
+  </div>
+
+  <!-- Header / Navbar -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-container">
+      <a href="index.html" class="logo">
+        <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo">
+        <span>ChronoSeal</span>
+      </a>
+      <div class="nav-links" id="navLinks">
+        <a href="philosophy.html" class="active">Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html">Protocol</a>
+        <a href="comparison.html">Comparison</a>
+        <div class="nav-dropdown">
+          <a href="#" class="nav-link">More <small>▼</small></a>
+          <div class="nav-dropdown-menu">
+            <a href="api.html">API Reference</a>
+            <a href="deployment.html">Deployment Guide</a>
+            <a href="operations.html">Operations Guide</a>
+            <a href="testing.html">Testing Strategy</a>
+            <a href="performance.html">Performance Tuning</a>
+            <a href="threat-model.html">Threat Model</a>
+            <a href="security.html">Security Policy</a>
+            <a href="privacy.html">Privacy Policy</a>
+          </div>
+        </div>
+        <button class="btn btn-ghost btn-sm btn-icon search-trigger" aria-label="Search" onclick="ChronoSearch.open()">
+          <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        </button>
+        <a href="https://github.com/thakares/chronoseal-rs" class="github-btn" target="_blank" rel="noopener">
+          <i class="fab fa-github"></i> GitHub
+        </a>
+      </div>
+      <button class="nav-toggle" id="menuBtn" aria-label="Toggle Navigation">
+        <i class="fas fa-bars"></i>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Doc Page Shell -->
+  <div class="doc-page">
+    <div class="doc-layout">
+      
+      <!-- Sidebar -->
+      <aside class="doc-sidebar">
+        <button class="doc-sidebar-toggle">
+          <i class="fas fa-bars"></i> Sidebar Menu
+        </button>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Core Concepts</div>
+          <a href="philosophy.html" class="doc-nav-item active">Design Philosophy</a>
+          <a href="architecture.html" class="doc-nav-item">Architecture Overview</a>
+          <a href="comparison.html" class="doc-nav-item">ChronoSeal vs Others</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Protocol &amp; API</div>
+          <a href="protocol.html" class="doc-nav-item">Protocol Specification</a>
+          <a href="api.html" class="doc-nav-item">API Reference</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Operations &amp; Security</div>
+          <a href="threat-model.html" class="doc-nav-item">Threat Model</a>
+          <a href="security.html" class="doc-nav-item">Security Policy</a>
+          <a href="privacy.html" class="doc-nav-item">Privacy Policy</a>
+          <a href="performance.html" class="doc-nav-item">Performance Tuning</a>
+        </div>
+        <div class="doc-nav-group">
+          <div class="doc-nav-label">Lifecycle &amp; Dev</div>
+          <a href="deployment.html" class="doc-nav-item">Deployment Guide</a>
+          <a href="operations.html" class="doc-nav-item">Operations Handbook</a>
+          <a href="testing.html" class="doc-nav-item">Testing Strategy</a>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <main class="doc-main">
+        <nav class="doc-breadcrumb" aria-label="Breadcrumb">
+          <a href="index.html">Home</a>
+          <span class="sep">/</span>
+          <a href="#">Core Concepts</a>
+          <span class="sep">/</span>
+          <span>Design Philosophy</span>
+        </nav>
+        
+        <article class="doc-content">
+          <h1>ChronoSeal Design Philosophy</h1>
+          <p class="doc-subtitle">ChronoSeal is designed for operators who want a local, inspectable, Unix-native browser attestation layer rather than a hosted anti-bot black box.</p>
+          
+          <hr>
+
+          <h2>Core Position</h2>
+          <p>ChronoSeal is infrastructure software. It should feel closer to <code>nginx</code>, <code>redis-server</code>, or a small system daemon than to a third-party analytics platform.</p>
+          <p>Our core design priorities include:</p>
+          <ul>
+            <li><strong>CLI-first operation:</strong> Simple commands for service validation and control.</li>
+            <li><strong>Explicit configuration:</strong> Plain text parameters, clear priorities, and no hidden magic.</li>
+            <li><strong>Deterministic protocol:</strong> Verifiable, cryptographic state progressions shared between browser WASM and server Rust.</li>
+            <li><strong>Small runtime surface:</strong> Low footprint, lightweight execution boundaries.</li>
+            <li><strong>Privacy-preserving:</strong> Short-lived sessions with zero long-term profiling or persistent databases.</li>
+            <li><strong>Observable:</strong> Native health probes, JSON statistics, and Prometheus metrics.</li>
+            <li><strong>Telemetry-free:</strong> Absolutely no hidden dashboards, tracking tags, or phone-home systems.</li>
+          </ul>
+
+          <h2>What ChronoSeal Optimizes For</h2>
+          
+          <h3>1. Operator Control</h3>
+          <p>Operators should be able to build, run, inspect, configure, monitor, and stop the service with ordinary Unix tools. This is why ChronoSeal provides first-class integrations and commands like <code>chronoseal run</code>, <code>status</code>, <code>health</code>, and native systemd configurations.</p>
+          
+          <h3>2. Determinism</h3>
+          <p>The core protocol depends on strict mathematical agreement between server Rust and browser WASM. To guarantee this, all deterministic execution logic is kept in the <code>shared/</code> crate, including hash chains, synthetic gene models, and VM instructions. This eliminates client/server runtime drift.</p>
+
+          <h3>3. Cost Escalation</h3>
+          <p>ChronoSeal does not claim impossible security. We recognize that any client code can eventually be decompiled or emulated. Instead, we focus on cost escalation—making automation expensive by forcing clients to maintain authentic signatures, stack execution history, mutation steps, and interaction signals. The objective is to make cheap automation brittle and expensive automation highly complex to maintain.</p>
+
+          <blockquote>
+            <p><strong>Silent Rejection Semantics:</strong> Heartbeat rejection is intentionally ambiguous. Invalid requests receive the same basic response structure as accepted heartbeats but omit the necessary next-state tokens. This prevents the API from acting as an oracle to guide attackers.</p>
+          </blockquote>
+
+          <h3>4. Privacy by Default</h3>
+          <p>ChronoSeal is not a tracking or analytics engine. It avoids long-term identifiers, cross-site identity graphs, behavioral profiling, and fingerprint history. The database retains only the minimal, ephemeral session state required to validate continuous liveness.</p>
+
+          <h2>Non-Goals</h2>
+          <p>ChronoSeal is explicitly <strong>not</strong>:</p>
+          <ul>
+            <li>A CAPTCHA replacement with interactive puzzles.</li>
+            <li>A fraud scoring system utilizing machine learning risk weights.</li>
+            <li>An authentication provider or OAuth server.</li>
+            <li>A hosted SaaS product under vendor control.</li>
+            <li>A complete defense against fully resourced, human-operated browser farms.</li>
+          </ul>
+
+          <h2>Engineering Biases</h2>
+          <p>When the project faces design trade-offs, we adhere to the following biases:</p>
+          <ul>
+            <li>Prefer <strong>explicit configuration</strong> over implicit magic.</li>
+            <li>Prefer <strong>server-side recomputation</strong> over trusting browser claims.</li>
+            <li>Prefer <strong>bounded execution limits</strong> over unbounded heuristics.</li>
+            <li>Prefer <strong>clear CLI output</strong> over hidden cloud dashboards.</li>
+            <li>Prefer <strong>local self-hosting</strong> over mandatory third-party API dependencies.</li>
+            <li>Prefer <strong>data minimization</strong> over policies and promises alone.</li>
+          </ul>
+        </article>
+
+        <!-- Pager -->
+        <nav class="doc-pager" aria-label="Doc navigation Pager">
+          <a href="index.html" class="doc-pager-link">
+            <div class="doc-pager-label">Previous</div>
+            <div class="doc-pager-title">Home Page</div>
+          </a>
+          <a href="architecture.html" class="doc-pager-link doc-pager-link--next">
+            <div class="doc-pager-label">Next</div>
+            <div class="doc-pager-title">Architecture Overview</div>
+          </a>
+        </nav>
+
+        <div class="doc-meta">
+          Last Updated: June 2026 (v1.0.2)
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-section">
+        <h4>
+          <img class="logobar" src="assets/logo.svg" alt="ChronoSeal Logo" style="width: 24px; height: 24px; vertical-align: middle;"> ChronoSeal
+        </h4>
+        <p>Next-generation browser attestation daemon built for the modern web.</p>
+      </div>
+      <div class="footer-section">
+        <h4>Resources</h4>
+        <a href="philosophy.html">Design Philosophy</a>
+        <a href="architecture.html">Architecture</a>
+        <a href="protocol.html">Protocol</a>
+        <a href="api.html">API Reference</a>
+        <a href="comparison.html">Comparison</a>
+      </div>
+      <div class="footer-section">
+        <h4>Community</h4>
+        <a href="https://github.com/thakares/chronoseal-rs" target="_blank" rel="noopener"><i class="fab fa-github"></i> GitHub</a>
+        <a href="deployment.html"><i class="fas fa-rocket"></i> Deployment</a>
+        <a href="testing.html"><i class="fas fa-vial"></i> Testing</a>
+      </div>
+      <div class="footer-section">
+        <h4>Legal &amp; Security</h4>
+        <a href="security.html">Security Policy</a>
+        <a href="privacy.html">Privacy Policy</a>
+        <a href="performance.html">Performance Tuning</a>
+        <a href="operations.html">Operations Guide</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 ChronoSeal Project. Built with 🦀 Rust and ❤️ for open source.</p>
+    </div>
+  </footer>
+
+  <!-- Search Overlay -->
+  <div class="search-overlay">
+    <div class="search-box">
+      <div class="search-input-wrap">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+        <input type="text" class="search-input" placeholder="Search documentation... (Esc to close)">
+        <span class="search-kbd">/</span>
+      </div>
+      <div class="search-results"></div>
+    </div>
+  </div>
+
+  <!-- Back to top -->
+  <a href="#" class="back-to-top" aria-label="Back to top">▲</a>
+
+  <!-- JS Scripts -->
+  <script src="js/search.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

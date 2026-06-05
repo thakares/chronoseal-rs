@@ -1,0 +1,39 @@
+/* ============================================================
+   Print Stylesheet — print.css
+   Clean print layout for documentation pages
+   ============================================================ */
+
+@media print {
+  *{color:#111!important;background:white!important;box-shadow:none!important;text-shadow:none!important}
+
+  body{font-size:11pt;line-height:1.6}
+
+  .site-header,.site-footer,.nav-toggle,.back-to-top,
+  .search-overlay,.doc-sidebar,.doc-toc,.doc-pager,
+  .doc-sidebar-toggle,.doc-breadcrumb,
+  .hero-bg,.hero-grid,.hero-badge,.hero-actions,
+  .hero-terminal,.cta-section,
+  .btn,.nav-cta{display:none!important}
+
+  .doc-layout,.doc-layout--toc{display:block!important}
+  .doc-main{padding:0!important;max-width:100%!important}
+  .doc-page{padding-top:0!important}
+
+  a{text-decoration:underline}
+  a[href^="http"]::after{content:" (" attr(href) ")";font-size:9pt;color:#666}
+  a[href^="#"]::after{content:""}
+
+  pre,code{font-size:9pt;border:1px solid #ddd;padding:8px;page-break-inside:avoid}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #ccc;padding:6px 10px;font-size:9pt}
+  th{background:#eee!important;font-weight:700}
+
+  h1{font-size:20pt;border-bottom:2px solid #111;padding-bottom:6pt;margin-bottom:12pt}
+  h2{font-size:16pt;border-bottom:1px solid #999;padding-bottom:4pt;margin-top:24pt;page-break-after:avoid}
+  h3{font-size:13pt;margin-top:18pt;page-break-after:avoid}
+
+  img{max-width:100%!important}
+  .section{padding:24pt 0!important}
+
+  @page{margin:1.5cm 2cm}
+}
